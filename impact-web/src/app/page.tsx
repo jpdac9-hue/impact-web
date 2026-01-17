@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { supabase } from '@/src/lib/supabase';
+import Link from 'next/link'; // Importation cruciale pour la navigation
 
 export default function Home() {
   const [merchants, setMerchants] = useState<any[]>([]);
@@ -10,7 +11,7 @@ export default function Home() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
 
-  // Les catégories (identiques à votre App Mobile)
+  // Les catégories
   const categories = [
     { label: 'Tous', value: 'All' },
     { label: 'Mode', value: 'Mode' },
@@ -33,7 +34,7 @@ export default function Home() {
     setLoading(false);
   };
 
-  // Logique de filtrage (Search + Category)
+  // Logique de filtrage (Recherche + Catégorie)
   useEffect(() => {
     let result = merchants;
     if (selectedCategory !== 'All') {
@@ -48,40 +49,43 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-gray-50 font-sans">
       {/* 1. NAVBAR FIXE */}
-      <nav className="sticky top-0 z-50 bg-white border-bottom border-gray-100 shadow-sm py-4 px-8">
+      <nav className="sticky top-0 z-50 bg-white border-b border-gray-100 shadow-sm py-4 px-8">
         <div className="max-w-7xl mx-auto flex justify-between items-center">
-          <h1 className="text-2xl font-black text-blue-600 tracking-tighter">IMPACT.</h1>
+          <h1 className="text-2xl font-black text-blue-600 tracking-tighter cursor-pointer">
+            <Link href="/">IMPACT.</Link>
+          </h1>
           <div className="hidden md:flex space-x-6 font-medium text-gray-600">
-            <a href="#" className="hover:text-blue-600 transition">Marchands</a>
-            <a href="#" className="hover:text-blue-600 transition">Comment ça marche ?</a>
-            <a href="#" className="hover:text-blue-600 transition">Mon Impact</a>
+            <Link href="/" className="hover:text-blue-600 transition">Marchands</Link>
+            <Link href="/profile" className="hover:text-blue-600 transition">Mon Impact</Link>
           </div>
-          <button className="bg-black text-white px-5 py-2 rounded-full text-sm font-bold">
+          {/* ÉTAPE 2 : BOUTON CONNEXION LIÉ */}
+          <Link 
+            href="/login" 
+            className="bg-black text-white px-6 py-2 rounded-full text-sm font-bold hover:bg-gray-800 transition"
+          >
             Connexion
-          </button>
+          </Link>
         </div>
       </nav>
 
-      {/* 2. HERO SECTION AVEC RECHERCHE */}
+      {/* 2. HERO SECTION */}
       <section className="bg-white py-16 px-8 border-b border-gray-100">
         <div className="max-w-4xl mx-auto text-center">
           <h2 className="text-5xl font-extrabold text-gray-900 mb-6 leading-tight">
             Financez des causes <span className="text-blue-600">gratuitement</span> en faisant vos achats.
           </h2>
           
-          {/* Barre de recherche */}
           <div className="relative max-w-2xl mx-auto mt-10">
             <input 
               type="text" 
               placeholder="Rechercher une boutique (Nike, Apple, Amazon...)" 
-              className="w-full p-5 pl-12 rounded-2xl border border-gray-200 shadow-xl focus:ring-2 focus:ring-blue-500 outline-none text-lg"
+              className="w-full p-5 pl-12 rounded-2xl border border-gray-200 shadow-xl focus:ring-2 focus:ring-blue-500 outline-none text-lg text-black"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
             <span className="absolute left-4 top-5 text-2xl">🔍</span>
           </div>
 
-          {/* Filtres de catégories */}
           <div className="flex flex-wrap justify-center gap-3 mt-8">
             {categories.map((cat) => (
               <button
