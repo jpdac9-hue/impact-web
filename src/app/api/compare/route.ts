@@ -3,24 +3,24 @@ import { NextResponse } from 'next/server';
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const query = searchParams.get('q');
-  const sort = searchParams.get('sort'); // 'asc' ou 'desc'
-  const postalCode = searchParams.get('zip'); // Code postal
+  const sort = searchParams.get('sort');
+  const postalCode = searchParams.get('zip');
 
   if (!query) {
     return NextResponse.json({ error: 'Query required' }, { status: 400 });
   }
 
   const apiKey = process.env.SERPAPI_KEY;
-
-  // Configuration de la recherche avec localisation
+  
+  // Configuration pour le Canada (Français)
   const params = new URLSearchParams({
     api_key: apiKey || '',
     engine: "google_shopping",
     q: query,
     google_domain: "google.ca",
     gl: "ca",
-    hl: "fr",
-    location: postalCode ? `Canada postal code ${postalCode}` : "Canada", // Tentative de localisation
+    hl: "fr", 
+    location: postalCode ? `Canada postal code ${postalCode}` : "Canada",
     num: "20"
   });
 
@@ -32,43 +32,57 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: data.error }, { status: 500 });
     }
 
-    // Fonction pour nettoyer le prix (enlever le '$', les espaces, etc.)
-    const parsePrice = (priceStr: string) => {
-      if (!priceStr) return 0;
-      // Garde seulement les chiffres et le point
-      const clean = priceStr.replace(/[^0-9.]/g, ''); 
-      return parseFloat(clean);
+    // --- LE SECRÉT MATHÉMATIQUE ---
+    const parsePrice = (priceInput: any) => {
+      if (typeof priceInput === 'number') return priceInput;
+      if (!priceInput) return 0;
+
+      // Convertit en texte
+      let clean = priceInput.toString();
+      
+      // Enlève tout ce qui n'est pas chiffre, point ou virgule
+      // Ex: "1 129,00 $" -> "1129,00"
+      clean = clean.replace(/[^0-9.,]/g, '');
+
+      // Remplace la virgule par un point (Format informatique)
+      // "1129,00" -> "1129.00"
+      clean = clean.replace(',', '.');
+
+      const result = parseFloat(clean);
+      return isNaN(result) ? 0 : result;
     };
 
     let products = data.shopping_results?.map((item: any) => {
-      const priceValue = item.extracted_price || parsePrice(item.price);
+      // Nettoyage du prix principal
+      const priceValue = parsePrice(item.price);
       
-      // Extraction du coût de livraison
+      // Nettoyage de la livraison
       let shippingCost = 0;
-      const deliveryText = item.delivery || ""; // Ex: "+ $15.00 delivery"
+      const deliveryText = item.delivery || ""; 
       
-      if (deliveryText.toLowerCase().includes('free') || deliveryText.toLowerCase().includes('gratuit')) {
+      if (deliveryText.toLowerCase().includes('gratuit') || deliveryText.toLowerCase().includes('free')) {
         shippingCost = 0;
       } else {
-        // Tente d'extraire un chiffre du texte de livraison
         shippingCost = parsePrice(deliveryText);
       }
 
       return {
         id: item.position,
         title: item.title,
-        price_display: item.price, // Texte affiché (ex: 1 200 $)
-        shipping_display: shippingCost === 0 ? "Gratuit" : `+${shippingCost}$`,
-        total_price_value: priceValue + shippingCost, // Pour le tri
+        price_display: item.price, // On garde le beau texte pour l'affichage
+        shipping_display: shippingCost === 0 ? "Gratuit" : `+${shippingCost.toFixed(2)}$`,
+        
+        // C'EST CE CHAMP QUI MANQUAIT :
+        total_price_value: priceValue + shippingCost, 
+        
         source: item.source,
         link: item.link,
         image: item.thumbnail,
-        rating: item.rating,
-        reviews: item.reviews
+        rating: item.rating
       };
     }) || [];
 
-    // TRI LOGIQUE (Croissant ou Décroissant sur le TOTAL)
+    // TRI DU TOTAL
     if (sort === 'asc') {
       products.sort((a: any, b: any) => a.total_price_value - b.total_price_value);
     } else if (sort === 'desc') {
