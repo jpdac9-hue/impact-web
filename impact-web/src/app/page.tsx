@@ -57,11 +57,11 @@ export default function Home() {
           </Link>
           
           <div className="flex items-center gap-4">
-            <Link href="/profile" className="hidden sm:block text-sm font-medium text-slate-500 hover:text-slate-900 transition">
+            <Link href="/dashboard" className="hidden sm:block text-sm font-medium text-slate-500 hover:text-slate-900 transition">
               Mon Espace
             </Link>
             <button 
-              onClick={() => router.push('/login')}
+              onClick={() => router.push('/signin')}
               className="bg-slate-900 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-slate-800 transition active:scale-95"
             >
               Connexion

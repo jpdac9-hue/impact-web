@@ -28,7 +28,7 @@ export default function LoginPage() {
       setLoading(false);
     } else {
       // Redirection vers le profil si succès
-      router.push('/profile');
+      router.push('/dashboard');
       router.refresh(); 
     }
   };
