@@ -17,14 +17,19 @@ export default function LoginPage() {
     setLoading(true);
     setError(null);
 
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    // Connexion via Supabase
+    const { error } = await supabase.auth.signInWithPassword({ 
+      email, 
+      password 
+    });
 
     if (error) {
       setError("Email ou mot de passe incorrect.");
       setLoading(false);
     } else {
+      // Redirection vers le profil si succès
       router.push('/profile');
-      router.refresh(); // Pour mettre à jour la barre de navigation
+      router.refresh(); 
     }
   };
 
@@ -33,7 +38,7 @@ export default function LoginPage() {
       <div className="max-w-md w-full bg-white rounded-3xl p-10 shadow-xl border border-gray-100">
         <div className="text-center mb-10">
           <h1 className="text-3xl font-black text-blue-600 mb-2">IMPACT.</h1>
-          <p className="text-gray-500 font-medium">Heureux de vous revoir !</p>
+          <p className="text-gray-500 font-medium text-black">Connectez-vous pour voir votre impact</p>
         </div>
 
         {error && (
@@ -47,7 +52,7 @@ export default function LoginPage() {
             <label className="block text-sm font-bold text-gray-700 mb-2 ml-1">Email</label>
             <input 
               type="email" 
-              className="w-full p-4 rounded-2xl border border-gray-200 outline-none focus:ring-2 focus:ring-blue-500 transition"
+              className="w-full p-4 rounded-2xl border border-gray-200 outline-none focus:ring-2 focus:ring-blue-500 transition text-black"
               placeholder="votre@email.com"
               value={email} 
               onChange={(e) => setEmail(e.target.value)}
@@ -59,7 +64,7 @@ export default function LoginPage() {
             <label className="block text-sm font-bold text-gray-700 mb-2 ml-1">Mot de passe</label>
             <input 
               type="password" 
-              className="w-full p-4 rounded-2xl border border-gray-200 outline-none focus:ring-2 focus:ring-blue-500 transition"
+              className="w-full p-4 rounded-2xl border border-gray-200 outline-none focus:ring-2 focus:ring-blue-500 transition text-black"
               placeholder="••••••••"
               value={password} 
               onChange={(e) => setPassword(e.target.value)}
@@ -72,14 +77,17 @@ export default function LoginPage() {
             disabled={loading}
             className="w-full bg-blue-600 text-white p-4 rounded-2xl font-bold hover:bg-blue-700 transition shadow-lg shadow-blue-100 disabled:bg-gray-300"
           >
-            {loading ? 'Connexion...' : 'Se connecter'}
+            {loading ? 'Connexion en cours...' : 'Se connecter'}
           </button>
         </form>
 
         <div className="mt-8 text-center">
-          <Link href="/" className="text-sm text-gray-400 hover:text-gray-600 transition">
-            ← Retour à l'accueil
-          </Link>
+<Link 
+  href="/login" 
+  className="bg-black text-white px-6 py-2 rounded-full text-sm font-bold hover:bg-gray-800 transition"
+>
+  Connexion
+</Link>
         </div>
       </div>
     </div>
