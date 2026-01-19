@@ -1,10 +1,15 @@
 import { NextResponse } from 'next/server';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const query = searchParams.get('q');
   const sort = searchParams.get('sort');
-  const postalCode = searchParams.get('zip');
+  
+  // NOUVEAU : On récupère la "location" (Ville) envoyée par l'app
+  // Si aucune ville n'est fournie, on utilise "Canada" par défaut.
+  const userLocation = searchParams.get('location') || "Canada";
 
   if (!query) {
     return NextResponse.json({ error: 'Query required' }, { status: 400 });
@@ -12,15 +17,15 @@ export async function GET(request: Request) {
 
   const apiKey = process.env.SERPAPI_KEY;
   
-  // Configuration pour le Canada (Français)
   const params = new URLSearchParams({
     api_key: apiKey || '',
     engine: "google_shopping",
     q: query,
     google_domain: "google.ca",
     gl: "ca",
-    hl: "fr", 
-    location: postalCode ? `Canada postal code ${postalCode}` : "Canada",
+    hl: "fr",
+    // C'EST ICI QUE ÇA CHANGE : On passe directement la ville
+    location: userLocation, 
     num: "20"
   });
 
@@ -32,57 +37,41 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: data.error }, { status: 500 });
     }
 
-    // --- LE SECRÉT MATHÉMATIQUE ---
+    // ... (Le reste du code de nettoyage des prix reste identique) ...
+    // ... Copiez-collez votre fonction parsePrice et le map des products d'avant ...
+    
+    // Pour gagner de la place ici, je ne remets pas tout le bloc parsePrice 
+    // car il ne change pas, mais assurez-vous de le garder !
+
     const parsePrice = (priceInput: any) => {
       if (typeof priceInput === 'number') return priceInput;
       if (!priceInput) return 0;
-
-      // Convertit en texte
-      let clean = priceInput.toString();
-      
-      // Enlève tout ce qui n'est pas chiffre, point ou virgule
-      // Ex: "1 129,00 $" -> "1129,00"
-      clean = clean.replace(/[^0-9.,]/g, '');
-
-      // Remplace la virgule par un point (Format informatique)
-      // "1129,00" -> "1129.00"
-      clean = clean.replace(',', '.');
-
+      let clean = priceInput.toString().replace(/[^0-9.,]/g, '').replace(',', '.');
       const result = parseFloat(clean);
       return isNaN(result) ? 0 : result;
     };
 
     let products = data.shopping_results?.map((item: any) => {
-      // Nettoyage du prix principal
-      const priceValue = parsePrice(item.price);
-      
-      // Nettoyage de la livraison
-      let shippingCost = 0;
-      const deliveryText = item.delivery || ""; 
-      
-      if (deliveryText.toLowerCase().includes('gratuit') || deliveryText.toLowerCase().includes('free')) {
-        shippingCost = 0;
-      } else {
-        shippingCost = parsePrice(deliveryText);
-      }
+        const priceValue = parsePrice(item.price);
+        let shippingCost = 0;
+        const deliveryText = item.delivery || ""; 
+        if (!deliveryText.toLowerCase().includes('gratuit') && !deliveryText.toLowerCase().includes('free')) {
+            shippingCost = parsePrice(deliveryText);
+        }
 
-      return {
-        id: item.position,
-        title: item.title,
-        price_display: item.price, // On garde le beau texte pour l'affichage
-        shipping_display: shippingCost === 0 ? "Gratuit" : `+${shippingCost.toFixed(2)}$`,
-        
-        // C'EST CE CHAMP QUI MANQUAIT :
-        total_price_value: priceValue + shippingCost, 
-        
-        source: item.source,
-        link: item.link,
-        image: item.thumbnail,
-        rating: item.rating
-      };
+        return {
+            id: item.position,
+            title: item.title,
+            price_display: item.price,
+            shipping_display: shippingCost === 0 ? "Gratuit" : `+${shippingCost.toFixed(2)}$`,
+            total_price_value: priceValue + shippingCost,
+            source: item.source,
+            link: item.link,
+            image: item.thumbnail,
+            rating: item.rating
+        };
     }) || [];
 
-    // TRI DU TOTAL
     if (sort === 'asc') {
       products.sort((a: any, b: any) => a.total_price_value - b.total_price_value);
     } else if (sort === 'desc') {
