@@ -12,8 +12,8 @@ export default function Home() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
   
-  // GESTION DES FAVORIS ET UTILISATEUR
-  const [favorites, setFavorites] = useState<number[]>([]); // On stocke les IDs (number)
+// Après (Correct, car ce sont des chaînes de caractères)
+const [favorites, setFavorites] = useState<string[]>([]);
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
   const [user, setUser] = useState<any>(null);
   
@@ -70,7 +70,7 @@ export default function Home() {
   };
 
   // LOGIQUE DU CŒUR (Hybride : Cloud + Local)
-  const toggleFavorite = async (merchantId: number) => {
+const toggleFavorite = async (merchantId: string) => { ... }
     const isFavorite = favorites.includes(merchantId);
     let newFavorites;
 
