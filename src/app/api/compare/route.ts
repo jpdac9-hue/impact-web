@@ -6,9 +6,6 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const query = searchParams.get('q');
   const sort = searchParams.get('sort');
-  
-  // NOUVEAU : On récupère la "location" (Ville) envoyée par l'app
-  // Si aucune ville n'est fournie, on utilise "Canada" par défaut.
   const userLocation = searchParams.get('location') || "Canada";
 
   if (!query) {
@@ -24,7 +21,6 @@ export async function GET(request: Request) {
     google_domain: "google.ca",
     gl: "ca",
     hl: "fr",
-    // C'EST ICI QUE ÇA CHANGE : On passe directement la ville
     location: userLocation, 
     num: "20"
   });
@@ -37,12 +33,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: data.error }, { status: 500 });
     }
 
-    // ... (Le reste du code de nettoyage des prix reste identique) ...
-    // ... Copiez-collez votre fonction parsePrice et le map des products d'avant ...
-    
-    // Pour gagner de la place ici, je ne remets pas tout le bloc parsePrice 
-    // car il ne change pas, mais assurez-vous de le garder !
-
+    // Fonction de nettoyage (inchangée mais robuste)
     const parsePrice = (priceInput: any) => {
       if (typeof priceInput === 'number') return priceInput;
       if (!priceInput) return 0;
@@ -53,20 +44,33 @@ export async function GET(request: Request) {
 
     let products = data.shopping_results?.map((item: any) => {
         const priceValue = parsePrice(item.price);
+        
+        // --- AMÉLIORATION LIVRAISON ---
         let shippingCost = 0;
+        // On regarde 'delivery' ET 'extracted_price' si dispo
         const deliveryText = item.delivery || ""; 
-        if (!deliveryText.toLowerCase().includes('gratuit') && !deliveryText.toLowerCase().includes('free')) {
+        
+        // Si le texte contient "gratuit" ou "free", c'est 0.
+        if (deliveryText.toLowerCase().includes('gratuit') || deliveryText.toLowerCase().includes('free')) {
+            shippingCost = 0;
+        } else {
+            // Sinon on essaie d'extraire le chiffre
             shippingCost = parsePrice(deliveryText);
         }
+
+        // --- AMÉLIORATION LIEN ---
+        // On cherche le lien partout où il pourrait se cacher
+        const finalLink = item.link || item.product_link || item.offer_url || item.inline_shopping_results?.[0]?.link || "";
 
         return {
             id: item.position,
             title: item.title,
             price_display: item.price,
-            shipping_display: shippingCost === 0 ? "Gratuit" : `+${shippingCost.toFixed(2)}$`,
+            // Si le parse a échoué (0) mais que le texte n'était pas "gratuit", on affiche "?" pour être honnête
+            shipping_display: (shippingCost === 0 && !deliveryText.toLowerCase().includes('gratuit') && deliveryText !== "") ? "?" : (shippingCost === 0 ? "Gratuit" : `+${shippingCost.toFixed(2)}$`),
             total_price_value: priceValue + shippingCost,
             source: item.source,
-            link: item.link,
+            link: finalLink, // On utilise le lien trouvé
             image: item.thumbnail,
             rating: item.rating
         };
