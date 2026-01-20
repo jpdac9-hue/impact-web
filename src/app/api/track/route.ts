@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
+export const dynamic = 'force-dynamic';
+
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const supabase = createClient(supabaseUrl, supabaseKey);
@@ -8,35 +10,53 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { merchant_id, product_title, price } = body;
+    const { merchant_id, product_title, user_id } = body;
 
-    // Validation simple
-    if (!merchant_id) {
-      return NextResponse.json({ error: 'No merchant ID' }, { status: 400 });
+    // 1. Validation
+    if (!merchant_id || !user_id) {
+      return NextResponse.json({ error: 'Missing merchant_id or user_id' }, { status: 400 });
     }
 
-    // On enregistre le clic
-    // Note: merchant_id est maintenant du texte (ex: 'Amazon')
-    const { error } = await supabase
+    // 2. On récupère les infos du Marchand (Taux, Nom, etc.) pour remplir l'historique
+    const { data: merchantData, error: merchantError } = await supabase
+      .from('Merchant') // Attention à la majuscule
+      .select('*')
+      .eq('id', merchant_id)
+      .single();
+
+    if (merchantError || !merchantData) {
+      console.error("Marchand introuvable:", merchantError);
+      return NextResponse.json({ error: 'Merchant not found' }, { status: 404 });
+    }
+
+    // 3. On insère le clic complet
+    const { error: insertError } = await supabase
       .from('clicks')
       .insert([
         { 
-          merchant_id: merchant_id, 
-          product_title: product_title || 'Produit inconnu',
-          amount_spent: 0, // Initialisé à 0 en attendant l'achat réel
-          status: 'pending', // Statut par défaut
+          user_id: user_id,                  // LE CHAINON MANQUANT !
+          merchant_id: merchant_id,          // ex: 'Amazon'
+          merchant_name: merchantData.name,  // ex: 'Amazon'
+          product_title: product_title || 'Recherche produit',
+          
+          // On remplit les infos financières pour l'affichage
+          commission_rate: merchantData.commissionRate,
+          reward_type: merchantData.reward_type,
+          status: 'pending',
+          amount_spent: 0,
+          actual_gain: 0,
           created_at: new Date()
         }
       ]);
 
-    if (error) {
-      console.error('Erreur Supabase:', error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+    if (insertError) {
+      console.error('Erreur Insert Clicks:', insertError);
+      return NextResponse.json({ error: insertError.message }, { status: 500 });
     }
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error(error);
+    console.error("Erreur Serveur:", error);
     return NextResponse.json({ error: 'Internal Error' }, { status: 500 });
   }
 }
