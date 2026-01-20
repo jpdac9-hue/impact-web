@@ -78,21 +78,22 @@ export async function GET(request: Request) {
         
         // On essaie de trouver le marchand dans notre base de données
         // Ex: Si item.source = "Amazon.ca Marketplace", et que merchants contient "Amazon" -> Ça matche
+// ... (votre code de matching marchand reste pareil) ...
+
         const matchedMerchant = merchants.find((m: any) => 
             item.source && item.source.toLowerCase().includes(m.name.toLowerCase())
         );
 
+        let merchantId = null; // Variable pour stocker l'ID
+
         if (matchedMerchant) {
-            // ON FABRIQUE LE LIEN DE RECHERCHE AUTOMATIQUE
-            // Ex: https://amazon.ca/s?k=iPhone+12&tag=moncode
+            merchantId = matchedMerchant.id; // ON RÉCUPÈRE L'ID ICI !
             const encodedTitle = encodeURIComponent(item.title);
             finalLink = `${matchedMerchant.search_url}${encodedTitle}${matchedMerchant.affiliate_suffix || ''}`;
         } else {
-            // Si on ne connait pas le marchand, on essaie quand même de trouver un lien direct Google
             if (item.product_link) finalLink = item.product_link;
             if (item.offer_url) finalLink = item.offer_url;
         }
-        // ---------------------------------
 
         const total = priceValue + shippingCost;
 
@@ -103,7 +104,8 @@ export async function GET(request: Request) {
             shipping_display: shippingLabel,
             total_price_value: total,
             source: item.source,
-            link: finalLink, // C'est maintenant notre lien intelligent !
+            link: finalLink,
+            merchant_id: merchantId, // <--- NOUVEAU CHAMP ENVOYÉ À L'APP
             image: item.thumbnail,
             rating: item.rating
         };
