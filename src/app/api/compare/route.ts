@@ -33,11 +33,13 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: data.error }, { status: 500 });
     }
 
-    // Fonction de nettoyage (inchangée mais robuste)
+    // --- FONCTION DE PARSING INTELLIGENTE ---
     const parsePrice = (priceInput: any) => {
-      if (typeof priceInput === 'number') return priceInput;
       if (!priceInput) return 0;
-      let clean = priceInput.toString().replace(/[^0-9.,]/g, '').replace(',', '.');
+      // On convertit en string et on garde chiffres, points et virgules
+      let clean = priceInput.toString().replace(/[^0-9.,]/g, '');
+      // On remplace la virgule par un point pour le calcul
+      clean = clean.replace(',', '.');
       const result = parseFloat(clean);
       return isNaN(result) ? 0 : result;
     };
@@ -45,37 +47,63 @@ export async function GET(request: Request) {
     let products = data.shopping_results?.map((item: any) => {
         const priceValue = parsePrice(item.price);
         
-        // --- AMÉLIORATION LIVRAISON ---
+        // --- 1. LOGIQUE LIVRAISON STRICTE ---
         let shippingCost = 0;
-        // On regarde 'delivery' ET 'extracted_price' si dispo
+        let shippingLabel = "?"; // Par défaut, on ne sait pas
+
+        // On récupère le texte brut (ex: "+ 15,00 $ livraison")
         const deliveryText = item.delivery || ""; 
-        
-        // Si le texte contient "gratuit" ou "free", c'est 0.
-        if (deliveryText.toLowerCase().includes('gratuit') || deliveryText.toLowerCase().includes('free')) {
-            shippingCost = 0;
+
+        if (deliveryText) {
+            const lowerText = deliveryText.toLowerCase();
+            
+            if (lowerText.includes('gratuit') || lowerText.includes('free')) {
+                // Cas 1 : C'est écrit gratuit explicitement
+                shippingCost = 0;
+                shippingLabel = "Gratuit";
+            } else {
+                // Cas 2 : Il y a un texte, on essaie de trouver un prix
+                const extractedCost = parsePrice(deliveryText);
+                if (extractedCost > 0) {
+                    shippingCost = extractedCost;
+                    shippingLabel = `+${extractedCost.toFixed(2)}$`;
+                } else {
+                    // Cas 3 : Il y a du texte mais pas de chiffre clair
+                    // On laisse shippingCost à 0 pour le tri, mais on affiche "?"
+                    shippingCost = 0; 
+                    shippingLabel = "Info sur site"; 
+                }
+            }
         } else {
-            // Sinon on essaie d'extraire le chiffre
-            shippingCost = parsePrice(deliveryText);
+            // Cas 4 : Pas d'info de livraison fournie par Google
+            shippingLabel = "?";
         }
 
-        // --- AMÉLIORATION LIEN ---
-        // On cherche le lien partout où il pourrait se cacher
-        const finalLink = item.link || item.product_link || item.offer_url || item.inline_shopping_results?.[0]?.link || "";
+        // --- 2. CHASSEUR DE LIEN ---
+        // On essaie de trouver le lien direct marchand
+        // Parfois caché dans 'product_link' ou 'offer_url'
+        let finalLink = item.link; // Le lien par défaut (souvent Google)
+        
+        if (item.product_link) finalLink = item.product_link;
+        if (item.offer_url) finalLink = item.offer_url;
+
+        // Calcul du total (Si livraison inconnue, Total = Prix + 0)
+        const total = priceValue + shippingCost;
 
         return {
             id: item.position,
             title: item.title,
             price_display: item.price,
-            // Si le parse a échoué (0) mais que le texte n'était pas "gratuit", on affiche "?" pour être honnête
-            shipping_display: (shippingCost === 0 && !deliveryText.toLowerCase().includes('gratuit') && deliveryText !== "") ? "?" : (shippingCost === 0 ? "Gratuit" : `+${shippingCost.toFixed(2)}$`),
-            total_price_value: priceValue + shippingCost,
+            shipping_display: shippingLabel, // On envoie le texte correct (Gratuit, +15$, ou ?)
+            total_price_value: total,
             source: item.source,
-            link: finalLink, // On utilise le lien trouvé
+            link: finalLink,
             image: item.thumbnail,
             rating: item.rating
         };
     }) || [];
 
+    // TRI
     if (sort === 'asc') {
       products.sort((a: any, b: any) => a.total_price_value - b.total_price_value);
     } else if (sort === 'desc') {
