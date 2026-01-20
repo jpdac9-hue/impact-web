@@ -1,6 +1,13 @@
 import { NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
 
+// On empêche le cache pour avoir des liens frais
 export const dynamic = 'force-dynamic';
+
+// Initialisation de Supabase
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -8,12 +15,9 @@ export async function GET(request: Request) {
   const sort = searchParams.get('sort');
   const userLocation = searchParams.get('location') || "Canada";
 
-  if (!query) {
-    return NextResponse.json({ error: 'Query required' }, { status: 400 });
-  }
+  if (!query) return NextResponse.json({ error: 'Query required' }, { status: 400 });
 
   const apiKey = process.env.SERPAPI_KEY;
-  
   const params = new URLSearchParams({
     api_key: apiKey || '',
     engine: "google_shopping",
@@ -26,20 +30,20 @@ export async function GET(request: Request) {
   });
 
   try {
-    const response = await fetch(`https://serpapi.com/search.json?${params}`);
-    const data = await response.json();
+    // 1. On lance les deux requêtes en parallèle (Google + Supabase) pour aller vite
+    const [googleRes, supabaseRes] = await Promise.all([
+      fetch(`https://serpapi.com/search.json?${params}`),
+      supabase.from('merchants').select('*')
+    ]);
 
-    if (data.error) {
-      return NextResponse.json({ error: data.error }, { status: 500 });
-    }
+    const data = await googleRes.json();
+    const merchants = supabaseRes.data || []; // Notre liste de règles marchands
 
-    // --- FONCTION DE PARSING INTELLIGENTE ---
+    if (data.error) return NextResponse.json({ error: data.error }, { status: 500 });
+
     const parsePrice = (priceInput: any) => {
       if (!priceInput) return 0;
-      // On convertit en string et on garde chiffres, points et virgules
-      let clean = priceInput.toString().replace(/[^0-9.,]/g, '');
-      // On remplace la virgule par un point pour le calcul
-      clean = clean.replace(',', '.');
+      let clean = priceInput.toString().replace(/[^0-9.,]/g, '').replace(',', '.');
       const result = parseFloat(clean);
       return isNaN(result) ? 0 : result;
     };
@@ -47,57 +51,59 @@ export async function GET(request: Request) {
     let products = data.shopping_results?.map((item: any) => {
         const priceValue = parsePrice(item.price);
         
-        // --- 1. LOGIQUE LIVRAISON STRICTE ---
+        // --- LOGIQUE LIVRAISON ---
         let shippingCost = 0;
-        let shippingLabel = "?"; // Par défaut, on ne sait pas
-
-        // On récupère le texte brut (ex: "+ 15,00 $ livraison")
+        let shippingLabel = "?"; 
         const deliveryText = item.delivery || ""; 
 
         if (deliveryText) {
             const lowerText = deliveryText.toLowerCase();
-            
             if (lowerText.includes('gratuit') || lowerText.includes('free')) {
-                // Cas 1 : C'est écrit gratuit explicitement
                 shippingCost = 0;
                 shippingLabel = "Gratuit";
             } else {
-                // Cas 2 : Il y a un texte, on essaie de trouver un prix
                 const extractedCost = parsePrice(deliveryText);
                 if (extractedCost > 0) {
                     shippingCost = extractedCost;
                     shippingLabel = `+${extractedCost.toFixed(2)}$`;
                 } else {
-                    // Cas 3 : Il y a du texte mais pas de chiffre clair
-                    // On laisse shippingCost à 0 pour le tri, mais on affiche "?"
                     shippingCost = 0; 
-                    shippingLabel = "Info sur site"; 
+                    shippingLabel = "Info site"; 
                 }
             }
-        } else {
-            // Cas 4 : Pas d'info de livraison fournie par Google
-            shippingLabel = "?";
         }
 
-        // --- 2. CHASSEUR DE LIEN ---
-        // On essaie de trouver le lien direct marchand
-        // Parfois caché dans 'product_link' ou 'offer_url'
-        let finalLink = item.link; // Le lien par défaut (souvent Google)
+        // --- MAGIE DU LIEN INTELLIGENT ---
+        let finalLink = item.link; // Par défaut, le lien Google
         
-        if (item.product_link) finalLink = item.product_link;
-        if (item.offer_url) finalLink = item.offer_url;
+        // On essaie de trouver le marchand dans notre base de données
+        // Ex: Si item.source = "Amazon.ca Marketplace", et que merchants contient "Amazon" -> Ça matche
+        const matchedMerchant = merchants.find((m: any) => 
+            item.source && item.source.toLowerCase().includes(m.name.toLowerCase())
+        );
 
-        // Calcul du total (Si livraison inconnue, Total = Prix + 0)
+        if (matchedMerchant) {
+            // ON FABRIQUE LE LIEN DE RECHERCHE AUTOMATIQUE
+            // Ex: https://amazon.ca/s?k=iPhone+12&tag=moncode
+            const encodedTitle = encodeURIComponent(item.title);
+            finalLink = `${matchedMerchant.search_url}${encodedTitle}${matchedMerchant.affiliate_suffix || ''}`;
+        } else {
+            // Si on ne connait pas le marchand, on essaie quand même de trouver un lien direct Google
+            if (item.product_link) finalLink = item.product_link;
+            if (item.offer_url) finalLink = item.offer_url;
+        }
+        // ---------------------------------
+
         const total = priceValue + shippingCost;
 
         return {
             id: item.position,
             title: item.title,
             price_display: item.price,
-            shipping_display: shippingLabel, // On envoie le texte correct (Gratuit, +15$, ou ?)
+            shipping_display: shippingLabel,
             total_price_value: total,
             source: item.source,
-            link: finalLink,
+            link: finalLink, // C'est maintenant notre lien intelligent !
             image: item.thumbnail,
             rating: item.rating
         };
@@ -112,6 +118,7 @@ export async function GET(request: Request) {
 
     return NextResponse.json({ products });
   } catch (error) {
+    console.error(error);
     return NextResponse.json({ error: 'Failed to fetch data' }, { status: 500 });
   }
 }
