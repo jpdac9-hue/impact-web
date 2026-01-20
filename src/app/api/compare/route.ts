@@ -80,15 +80,33 @@ export async function GET(request: Request) {
             item.source && item.source.toLowerCase().includes(m.name.toLowerCase())
         );
 
+// ... code précédent ...
+
         if (matchedMerchant) {
-            merchantId = matchedMerchant.id; // On récupère l'ID texte ('Amazon')
+            merchantId = matchedMerchant.id; // On récupère l'ID texte ('Amazon', 'Best Buy')
             
             // Si on a l'URL de recherche spéciale, on l'utilise
             if (matchedMerchant.search_url) {
-                const encodedTitle = encodeURIComponent(item.title);
+                
+                // --- NETTOYAGE INTELLIGENT DU TITRE ---
+                // 1. On enlève les caractères spéciaux qui cassent les recherches (parentheses, crochets, slashs)
+                let cleanTitle = item.title.replace(/[\(\)\[\]\/\\,\-]/g, ' ');
+                
+                // 2. On enlève les espaces multiples créés par le remplacement
+                cleanTitle = cleanTitle.replace(/\s+/g, ' ').trim();
+
+                // 3. On ne garde que les 6 premiers mots (Best Buy déteste les phrases trop longues)
+                const words = cleanTitle.split(' ');
+                if (words.length > 6) {
+                    cleanTitle = words.slice(0, 6).join(' ');
+                }
+                // ---------------------------------------
+
+                const encodedTitle = encodeURIComponent(cleanTitle);
                 finalLink = `${matchedMerchant.search_url}${encodedTitle}${matchedMerchant.affiliate_suffix || ''}`;
             }
         } else {
+             // ... reste du code ...
             if (item.product_link) finalLink = item.product_link;
             if (item.offer_url) finalLink = item.offer_url;
         }
