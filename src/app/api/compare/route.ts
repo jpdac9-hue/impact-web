@@ -15,26 +15,23 @@ export async function GET(request: Request) {
   
   const minPrice = searchParams.get('min_price');
   const maxPrice = searchParams.get('max_price');
-  const condition = searchParams.get('condition'); // 'new' ou 'used'
+  const condition = searchParams.get('condition'); 
 
   if (!query) return NextResponse.json({ error: 'Query required' }, { status: 400 });
 
-  // --- CORRECTION MAJEURE DES FILTRES (TBS) ---
-  // On commence par "vw:g,mr:1" qui force Google à accepter les filtres
-  let tbsArray = ["vw:g", "mr:1"]; 
+  // --- FILTRES (TBS) ---
+  let tbsParams = ["vw:g", "mr:1"]; // Force le mode magasinage avancé
   
-  // 1. Filtre Prix
   if (minPrice || maxPrice) {
-    tbsArray.push('price:1'); // Active le flag prix
-    if (minPrice) tbsArray.push(`ppr_min:${minPrice}`);
-    if (maxPrice) tbsArray.push(`ppr_max:${maxPrice}`);
+    tbsParams.push('price:1');
+    if (minPrice) tbsParams.push(`ppr_min:${minPrice}`);
+    if (maxPrice) tbsParams.push(`ppr_max:${maxPrice}`);
   }
 
-  // 2. Filtre État
-  if (condition === 'new') tbsArray.push('new:1');
-  if (condition === 'used') tbsArray.push('used:1'); // Parfois 'good:1' fonctionne aussi pour usagé
+  if (condition === 'new') tbsParams.push('new:1');
+  else if (condition === 'used') tbsParams.push('used:1');
 
-  const tbsString = tbsArray.join(',');
+  const tbsString = tbsParams.join(',');
 
   const apiKey = process.env.SERPAPI_KEY;
   const params = new URLSearchParams({
@@ -46,7 +43,7 @@ export async function GET(request: Request) {
     hl: "fr",
     location: userLocation, 
     num: "20",
-    tbs: tbsString // On envoie la formule magique
+    tbs: tbsString
   });
 
   try {
@@ -62,7 +59,10 @@ export async function GET(request: Request) {
 
     const parsePrice = (priceInput: any) => {
       if (!priceInput) return 0;
-      let clean = priceInput.toString().replace(/[^0-9.,]/g, '').replace(',', '.');
+      // On garde uniquement chiffres, points et virgules
+      let clean = priceInput.toString().replace(/[^0-9.,]/g, '');
+      // On remplace la virgule par un point pour que l'ordi comprenne
+      clean = clean.replace(',', '.');
       const result = parseFloat(clean);
       return isNaN(result) ? 0 : result;
     };
@@ -70,31 +70,31 @@ export async function GET(request: Request) {
     let products = data.shopping_results?.map((item: any) => {
         const priceValue = parsePrice(item.price);
         
-        // --- LIVRAISON ---
+        // --- NOUVELLE LOGIQUE LIVRAISON ---
         let shippingCost = 0;
-        let shippingLabel = "?"; 
+        let shippingLabel = "Livraison : Info site"; // Par défaut si on ne trouve rien
         const deliveryText = item.delivery || ""; 
 
         if (deliveryText) {
             const lowerText = deliveryText.toLowerCase();
+            
             if (lowerText.includes('gratuit') || lowerText.includes('free')) {
                 shippingCost = 0;
-                shippingLabel = "Gratuit";
+                shippingLabel = "Livraison Gratuite";
             } else {
+                // On essaie d'extraire un chiffre du texte (ex: "Environ 15$")
                 const extractedCost = parsePrice(deliveryText);
                 if (extractedCost > 0) {
                     shippingCost = extractedCost;
-                    shippingLabel = `+${extractedCost.toFixed(2)}$`;
-                } else {
-                    shippingCost = 0; 
-                    shippingLabel = "Info site"; 
+                    // ICI : On ajoute le mot "Livraison"
+                    shippingLabel = `+ ${extractedCost.toFixed(2)}$ Livraison`;
                 }
             }
         }
 
-        // --- LIEN INTELLIGENT ---
+        // --- LIEN & MARCHAND ---
         let finalLink = item.link;
-        let merchantId = null; 
+        let merchantId = item.source || "Autre"; 
 
         const matchedMerchant = merchants.find((m: any) => 
             item.source && item.source.toLowerCase().includes(m.name.toLowerCase())
@@ -102,8 +102,8 @@ export async function GET(request: Request) {
 
         if (matchedMerchant) {
             merchantId = matchedMerchant.id;
+            
             if (matchedMerchant.search_url) {
-                // Nettoyage titre
                 let cleanTitle = item.title.replace(/[\(\)\[\]\/\\,\-]/g, ' ');
                 cleanTitle = cleanTitle.replace(/\s+/g, ' ').trim();
                 const words = cleanTitle.split(' ');
@@ -121,19 +121,18 @@ export async function GET(request: Request) {
             id: item.position,
             title: item.title,
             price_display: item.price,
-            shipping_display: shippingLabel,
+            shipping_display: shippingLabel, // Contient maintenant le texte complet
             total_price_value: priceValue + shippingCost,
             source: item.source,
             link: finalLink,
-            merchant_id: merchantId, 
+            merchant_id: merchantId,
             image: item.thumbnail,
-            // --- INFO AVIS ---
-            rating: item.rating, // Note (ex: 4.5)
-            reviews: item.reviews // Nombre d'avis (ex: 1200)
+            rating: item.rating,
+            reviews: item.reviews
         };
     }) || [];
 
-    // TRI MANUEL (Gardons-le pour être sûr)
+    // TRI
     if (sort === 'asc') {
       products.sort((a: any, b: any) => a.total_price_value - b.total_price_value);
     } else if (sort === 'desc') {
