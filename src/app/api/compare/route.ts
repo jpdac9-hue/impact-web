@@ -11,44 +11,18 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const query = searchParams.get('q');
   
-  // NOUVEAU : Paramètre de tri Google
-  // options attendues: 'price_low', 'price_high', 'review_score', 'best_match'
-  const sort = searchParams.get('sort') || 'best_match'; 
-  
+  // Paramètres de l'interface
+  const sort = searchParams.get('sort'); // price_low, price_high, review_score
   const userLocation = searchParams.get('location') || "Canada";
-  const minPrice = searchParams.get('min_price');
-  const maxPrice = searchParams.get('max_price');
-  const condition = searchParams.get('condition'); 
+  
+  // Paramètre technique Google (TBS) pour les filtres actifs (ex: prix min, marque, état)
+  const tbs = searchParams.get('tbs');
 
   if (!query) return NextResponse.json({ error: 'Query required' }, { status: 400 });
 
-  // --- CONSTRUCTION AVANCÉE DES FILTRES (TBS) ---
-  // vw:g = Vue Grille, mr:1 = Résultats marchands
-  let tbsParams = ["vw:g", "mr:1"]; 
-
-  // 1. Filtre Prix (Limites strictes)
-  if (minPrice || maxPrice) {
-    tbsParams.push('price:1');
-    if (minPrice) tbsParams.push(`ppr_min:${minPrice}`);
-    if (maxPrice) tbsParams.push(`ppr_max:${maxPrice}`);
-  }
-
-  // 2. Filtre État
-  if (condition === 'new') tbsParams.push('new:1');
-  if (condition === 'used') tbsParams.push('used:1');
-
-  const tbsString = tbsParams.join(',');
-
   const apiKey = process.env.SERPAPI_KEY;
   
-  // --- MAPPAGE DU TRI ---
-  // On convertit votre choix en langage SerpApi/Google
-  let serpApiSort = undefined;
-  if (sort === 'price_low') serpApiSort = 'price_low'; // Prix croissant
-  if (sort === 'price_high') serpApiSort = 'price_high'; // Prix décroissant
-  if (sort === 'review_score') serpApiSort = 'review_score'; // Meilleures notes
-  // Si 'best_match', on n'envoie rien (par défaut)
-
+  // 1. Configuration de base
   const params: any = {
     api_key: apiKey || '',
     engine: "google_shopping",
@@ -58,17 +32,26 @@ export async function GET(request: Request) {
     hl: "fr",
     location: userLocation,
     num: "20",
-    tbs: tbsString
   };
 
-  // On ajoute le tri seulement s'il est défini
-  if (serpApiSort) {
-    params.sort = serpApiSort;
+  // 2. Gestion du TRI (Sorting)
+  // SerpApi gère ça très bien si on lui donne le bon mot clé
+  if (sort === 'price_low') params.sort = 'price_low';
+  if (sort === 'price_high') params.sort = 'price_high';
+  if (sort === 'review_score') params.sort = 'review_score';
+  // Si 'best_match', on ne met rien, c'est le défaut.
+
+  // 3. Gestion des FILTRES (Refine Results)
+  // Si l'app nous envoie un code TBS (ex: pour un prix spécifique ou une marque), on l'utilise
+  if (tbs) {
+    params.tbs = tbs;
+  } else {
+    // Sinon, on active au moins le mode "Vue Grille" pour avoir des résultats propres
+    params.tbs = "vw:g,mr:1";
   }
 
   try {
     const [googleRes, supabaseRes] = await Promise.all([
-      // On utilise une astuce pour construire l'URL avec les params dynamiques
       fetch(`https://serpapi.com/search.json?${new URLSearchParams(params).toString()}`),
       supabase.from('Merchant').select('*') 
     ]);
@@ -78,6 +61,7 @@ export async function GET(request: Request) {
 
     if (data.error) return NextResponse.json({ error: data.error }, { status: 500 });
 
+    // --- NETTOYAGE DES PRIX ---
     const parsePrice = (priceInput: any) => {
       if (!priceInput) return 0;
       let clean = priceInput.toString().replace(/[^0-9.,]/g, '').replace(',', '.');
@@ -88,9 +72,9 @@ export async function GET(request: Request) {
     let products = data.shopping_results?.map((item: any) => {
         const priceValue = parsePrice(item.price);
         
-        // --- LIVRAISON ---
+        // Livraison
         let shippingCost = 0;
-        let shippingLabel = ""; // On laisse vide si on ne sait pas, c'est plus propre
+        let shippingLabel = ""; 
         const deliveryText = item.delivery || ""; 
 
         if (deliveryText) {
@@ -102,15 +86,14 @@ export async function GET(request: Request) {
                 const extractedCost = parsePrice(deliveryText);
                 if (extractedCost > 0) {
                     shippingCost = extractedCost;
-                    shippingLabel = `+${extractedCost.toFixed(2)}$`;
+                    shippingLabel = `+${extractedCost.toFixed(2)}$ Liv.`;
                 }
             }
         }
 
-        // --- LIEN & MARCHAND ---
+        // Matching Marchand
         let finalLink = item.link;
         let merchantId = item.source || "Autre"; 
-
         const matchedMerchant = merchants.find((m: any) => 
             item.source && item.source.toLowerCase().includes(m.name.toLowerCase())
         );
@@ -122,7 +105,6 @@ export async function GET(request: Request) {
                 cleanTitle = cleanTitle.replace(/\s+/g, ' ').trim();
                 const words = cleanTitle.split(' ');
                 if (words.length > 6) cleanTitle = words.slice(0, 6).join(' ');
-                
                 const encodedTitle = encodeURIComponent(cleanTitle);
                 finalLink = `${matchedMerchant.search_url}${encodedTitle}${matchedMerchant.affiliate_suffix || ''}`;
             }
@@ -146,9 +128,12 @@ export async function GET(request: Request) {
         };
     }) || [];
 
-    // PLUS BESOIN DE TRIER ICI (Google l'a fait pour nous !)
-    
-    return NextResponse.json({ products });
+    // --- IMPORTANT : ON RENVOIE LES FILTRES (FACETS) ---
+    // Google nous donne ici la liste des marques, magasins, etc. disponibles
+    const filters = data.filters || [];
+
+    return NextResponse.json({ products, filters });
+
   } catch (error) {
     console.error(error);
     return NextResponse.json({ error: 'Failed to fetch data' }, { status: 500 });
