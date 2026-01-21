@@ -10,45 +10,66 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const query = searchParams.get('q');
-  const sort = searchParams.get('sort');
-  const userLocation = searchParams.get('location') || "Canada";
   
+  // NOUVEAU : Paramètre de tri Google
+  // options attendues: 'price_low', 'price_high', 'review_score', 'best_match'
+  const sort = searchParams.get('sort') || 'best_match'; 
+  
+  const userLocation = searchParams.get('location') || "Canada";
   const minPrice = searchParams.get('min_price');
   const maxPrice = searchParams.get('max_price');
   const condition = searchParams.get('condition'); 
 
   if (!query) return NextResponse.json({ error: 'Query required' }, { status: 400 });
 
-  // --- FILTRES (TBS) ---
-  let tbsParams = ["vw:g", "mr:1"]; // Force le mode magasinage avancé
-  
+  // --- CONSTRUCTION AVANCÉE DES FILTRES (TBS) ---
+  // vw:g = Vue Grille, mr:1 = Résultats marchands
+  let tbsParams = ["vw:g", "mr:1"]; 
+
+  // 1. Filtre Prix (Limites strictes)
   if (minPrice || maxPrice) {
     tbsParams.push('price:1');
     if (minPrice) tbsParams.push(`ppr_min:${minPrice}`);
     if (maxPrice) tbsParams.push(`ppr_max:${maxPrice}`);
   }
 
+  // 2. Filtre État
   if (condition === 'new') tbsParams.push('new:1');
-  else if (condition === 'used') tbsParams.push('used:1');
+  if (condition === 'used') tbsParams.push('used:1');
 
   const tbsString = tbsParams.join(',');
 
   const apiKey = process.env.SERPAPI_KEY;
-  const params = new URLSearchParams({
+  
+  // --- MAPPAGE DU TRI ---
+  // On convertit votre choix en langage SerpApi/Google
+  let serpApiSort = undefined;
+  if (sort === 'price_low') serpApiSort = 'price_low'; // Prix croissant
+  if (sort === 'price_high') serpApiSort = 'price_high'; // Prix décroissant
+  if (sort === 'review_score') serpApiSort = 'review_score'; // Meilleures notes
+  // Si 'best_match', on n'envoie rien (par défaut)
+
+  const params: any = {
     api_key: apiKey || '',
     engine: "google_shopping",
     q: query,
     google_domain: "google.ca",
     gl: "ca",
     hl: "fr",
-    location: userLocation, 
+    location: userLocation,
     num: "20",
     tbs: tbsString
-  });
+  };
+
+  // On ajoute le tri seulement s'il est défini
+  if (serpApiSort) {
+    params.sort = serpApiSort;
+  }
 
   try {
     const [googleRes, supabaseRes] = await Promise.all([
-      fetch(`https://serpapi.com/search.json?${params}`),
+      // On utilise une astuce pour construire l'URL avec les params dynamiques
+      fetch(`https://serpapi.com/search.json?${new URLSearchParams(params).toString()}`),
       supabase.from('Merchant').select('*') 
     ]);
 
@@ -59,10 +80,7 @@ export async function GET(request: Request) {
 
     const parsePrice = (priceInput: any) => {
       if (!priceInput) return 0;
-      // On garde uniquement chiffres, points et virgules
-      let clean = priceInput.toString().replace(/[^0-9.,]/g, '');
-      // On remplace la virgule par un point pour que l'ordi comprenne
-      clean = clean.replace(',', '.');
+      let clean = priceInput.toString().replace(/[^0-9.,]/g, '').replace(',', '.');
       const result = parseFloat(clean);
       return isNaN(result) ? 0 : result;
     };
@@ -70,24 +88,21 @@ export async function GET(request: Request) {
     let products = data.shopping_results?.map((item: any) => {
         const priceValue = parsePrice(item.price);
         
-        // --- NOUVELLE LOGIQUE LIVRAISON ---
+        // --- LIVRAISON ---
         let shippingCost = 0;
-        let shippingLabel = "Livraison : Info site"; // Par défaut si on ne trouve rien
+        let shippingLabel = ""; // On laisse vide si on ne sait pas, c'est plus propre
         const deliveryText = item.delivery || ""; 
 
         if (deliveryText) {
             const lowerText = deliveryText.toLowerCase();
-            
             if (lowerText.includes('gratuit') || lowerText.includes('free')) {
                 shippingCost = 0;
-                shippingLabel = "Livraison Gratuite";
+                shippingLabel = "Gratuit";
             } else {
-                // On essaie d'extraire un chiffre du texte (ex: "Environ 15$")
                 const extractedCost = parsePrice(deliveryText);
                 if (extractedCost > 0) {
                     shippingCost = extractedCost;
-                    // ICI : On ajoute le mot "Livraison"
-                    shippingLabel = `+ ${extractedCost.toFixed(2)}$ Livraison`;
+                    shippingLabel = `+${extractedCost.toFixed(2)}$`;
                 }
             }
         }
@@ -102,7 +117,6 @@ export async function GET(request: Request) {
 
         if (matchedMerchant) {
             merchantId = matchedMerchant.id;
-            
             if (matchedMerchant.search_url) {
                 let cleanTitle = item.title.replace(/[\(\)\[\]\/\\,\-]/g, ' ');
                 cleanTitle = cleanTitle.replace(/\s+/g, ' ').trim();
@@ -121,7 +135,7 @@ export async function GET(request: Request) {
             id: item.position,
             title: item.title,
             price_display: item.price,
-            shipping_display: shippingLabel, // Contient maintenant le texte complet
+            shipping_display: shippingLabel,
             total_price_value: priceValue + shippingCost,
             source: item.source,
             link: finalLink,
@@ -132,13 +146,8 @@ export async function GET(request: Request) {
         };
     }) || [];
 
-    // TRI
-    if (sort === 'asc') {
-      products.sort((a: any, b: any) => a.total_price_value - b.total_price_value);
-    } else if (sort === 'desc') {
-      products.sort((a: any, b: any) => b.total_price_value - a.total_price_value);
-    }
-
+    // PLUS BESOIN DE TRIER ICI (Google l'a fait pour nous !)
+    
     return NextResponse.json({ products });
   } catch (error) {
     console.error(error);
