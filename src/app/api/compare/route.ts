@@ -8,64 +8,64 @@ const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const query = searchParams.get('q');
-  
-  const sort = searchParams.get('sort'); 
-  const userLocation = searchParams.get('location') || "Canada";
-  
-  // Filtres manuels
-  const minPrice = searchParams.get('min_price');
-  const maxPrice = searchParams.get('max_price');
-  const condition = searchParams.get('condition');
-  
-  // Filtre Google (TBS) envoyé directement par le bouton "Affiner"
-  const tbsParam = searchParams.get('tbs');
-
-  if (!query) return NextResponse.json({ error: 'Query required' }, { status: 400 });
-
-  const apiKey = process.env.SERPAPI_KEY;
-  
-  const params: any = {
-    api_key: apiKey || '',
-    engine: "google_shopping",
-    q: query,
-    google_domain: "google.ca",
-    gl: "ca",
-    hl: "fr",
-    location: userLocation,
-    num: "20",
-  };
-
-  // --- GESTION INTELLIGENTE DES FILTRES (TBS) ---
-  if (tbsParam) {
-    // Cas 1 : On a reçu un code TBS précis depuis l'app (Menu Affiner)
-    params.tbs = tbsParam;
-  } else {
-    // Cas 2 : On construit le TBS à partir des champs manuels (Prix/État)
-    let tbsArray = ["vw:g", "mr:1"]; // Toujours activer Grid View + Merchant Results
+  try {
+    const { searchParams } = new URL(request.url);
+    const query = searchParams.get('q');
     
-    if (minPrice || maxPrice) {
-      tbsArray.push('price:1'); // Active le flag prix
-      if (minPrice) tbsArray.push(`ppr_min:${minPrice}`);
-      if (maxPrice) tbsArray.push(`ppr_max:${maxPrice}`);
+    if (!query) return NextResponse.json({ error: 'Query required' }, { status: 400 });
+
+    const sort = searchParams.get('sort'); 
+    const userLocation = searchParams.get('location') || "Canada";
+    
+    // Filtres
+    const minPrice = searchParams.get('min_price');
+    const maxPrice = searchParams.get('max_price');
+    const condition = searchParams.get('condition');
+    const tbsParam = searchParams.get('tbs');
+
+    const apiKey = process.env.SERPAPI_KEY;
+
+    // --- CONSTRUCTION DU TBS (Filtres Google) ---
+    let finalTbs = "";
+
+    if (tbsParam) {
+      // Cas A : Filtre direct (Affiner)
+      finalTbs = tbsParam;
+    } else {
+      // Cas B : Filtres manuels (Prix/État)
+      let tbsArray = ["vw:g", "mr:1"]; // Vue Grille + Marchands
+      
+      if (minPrice || maxPrice) {
+        tbsArray.push('price:1');
+        if (minPrice) tbsArray.push(`ppr_min:${minPrice}`);
+        if (maxPrice) tbsArray.push(`ppr_max:${maxPrice}`);
+      }
+
+      if (condition === 'new') tbsArray.push('new:1');
+      if (condition === 'used') tbsArray.push('used:1');
+
+      finalTbs = tbsArray.join(',');
     }
 
-    if (condition === 'new') tbsArray.push('new:1');
-    if (condition === 'used') tbsArray.push('used:1');
+    // --- CONSTRUCTION DES PARAMÈTRES ---
+    const params: any = {
+      api_key: apiKey || '',
+      engine: "google_shopping",
+      q: query,
+      google_domain: "google.ca",
+      gl: "ca",
+      hl: "fr",
+      location: userLocation,
+      num: "20",
+      tbs: finalTbs // On assigne le TBS calculé
+    };
 
-    params.tbs = tbsArray.join(',');
-  }
+    // Ajout du tri
+    if (sort === 'price_low') params.sort = 'price_low';
+    else if (sort === 'price_high') params.sort = 'price_high';
+    else if (sort === 'review_score') params.sort = 'review_score';
 
-  // --- GESTION DU TRI ---
-  // SerpApi gère le tri via le paramètre 'sort', indépendamment de 'tbs'
-  if (sort === 'price_low') params.sort = 'price_low';
-  else if (sort === 'price_high') params.sort = 'price_high';
-  else if (sort === 'review_score') params.sort = 'review_score';
-
-  console.log("Paramètres envoyés à Google:", params); // Pour débugger sur Vercel
-
-  try {
+    // --- APPELS API ---
     const [googleRes, supabaseRes] = await Promise.all([
       fetch(`https://serpapi.com/search.json?${new URLSearchParams(params).toString()}`),
       supabase.from('Merchant').select('*') 
@@ -74,8 +74,12 @@ export async function GET(request: Request) {
     const data = await googleRes.json();
     const merchants = supabaseRes.data || []; 
 
-    if (data.error) return NextResponse.json({ error: data.error }, { status: 500 });
+    if (data.error) {
+      console.error("Erreur SerpApi:", data.error);
+      return NextResponse.json({ error: data.error }, { status: 500 });
+    }
 
+    // --- TRAITEMENT DES RÉSULTATS ---
     const parsePrice = (priceInput: any) => {
       if (!priceInput) return 0;
       let clean = priceInput.toString().replace(/[^0-9.,]/g, '').replace(',', '.');
@@ -140,11 +144,10 @@ export async function GET(request: Request) {
         };
     }) || [];
 
-    const filters = data.filters || [];
+    return NextResponse.json({ products, filters: data.filters || [] });
 
-    return NextResponse.json({ products, filters });
-
-  } catch (error) {
-    return NextResponse.json({ error: 'Failed to fetch data' }, { status: 500 });
+  } catch (error: any) {
+    console.error("Erreur Backend:", error);
+    return NextResponse.json({ error: error.message || 'Internal Error' }, { status: 500 });
   }
 }
