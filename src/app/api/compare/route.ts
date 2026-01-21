@@ -11,18 +11,21 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const query = searchParams.get('q');
   
-  // Paramètres de l'interface
-  const sort = searchParams.get('sort'); // price_low, price_high, review_score
+  const sort = searchParams.get('sort'); 
   const userLocation = searchParams.get('location') || "Canada";
   
-  // Paramètre technique Google (TBS) pour les filtres actifs (ex: prix min, marque, état)
-  const tbs = searchParams.get('tbs');
+  // Filtres manuels
+  const minPrice = searchParams.get('min_price');
+  const maxPrice = searchParams.get('max_price');
+  const condition = searchParams.get('condition');
+  
+  // Filtre Google (TBS) envoyé directement par le bouton "Affiner"
+  const tbsParam = searchParams.get('tbs');
 
   if (!query) return NextResponse.json({ error: 'Query required' }, { status: 400 });
 
   const apiKey = process.env.SERPAPI_KEY;
   
-  // 1. Configuration de base
   const params: any = {
     api_key: apiKey || '',
     engine: "google_shopping",
@@ -34,21 +37,33 @@ export async function GET(request: Request) {
     num: "20",
   };
 
-  // 2. Gestion du TRI (Sorting)
-  // SerpApi gère ça très bien si on lui donne le bon mot clé
-  if (sort === 'price_low') params.sort = 'price_low';
-  if (sort === 'price_high') params.sort = 'price_high';
-  if (sort === 'review_score') params.sort = 'review_score';
-  // Si 'best_match', on ne met rien, c'est le défaut.
-
-  // 3. Gestion des FILTRES (Refine Results)
-  // Si l'app nous envoie un code TBS (ex: pour un prix spécifique ou une marque), on l'utilise
-  if (tbs) {
-    params.tbs = tbs;
+  // --- GESTION INTELLIGENTE DES FILTRES (TBS) ---
+  if (tbsParam) {
+    // Cas 1 : On a reçu un code TBS précis depuis l'app (Menu Affiner)
+    params.tbs = tbsParam;
   } else {
-    // Sinon, on active au moins le mode "Vue Grille" pour avoir des résultats propres
-    params.tbs = "vw:g,mr:1";
+    // Cas 2 : On construit le TBS à partir des champs manuels (Prix/État)
+    let tbsArray = ["vw:g", "mr:1"]; // Toujours activer Grid View + Merchant Results
+    
+    if (minPrice || maxPrice) {
+      tbsArray.push('price:1'); // Active le flag prix
+      if (minPrice) tbsArray.push(`ppr_min:${minPrice}`);
+      if (maxPrice) tbsArray.push(`ppr_max:${maxPrice}`);
+    }
+
+    if (condition === 'new') tbsArray.push('new:1');
+    if (condition === 'used') tbsArray.push('used:1');
+
+    params.tbs = tbsArray.join(',');
   }
+
+  // --- GESTION DU TRI ---
+  // SerpApi gère le tri via le paramètre 'sort', indépendamment de 'tbs'
+  if (sort === 'price_low') params.sort = 'price_low';
+  else if (sort === 'price_high') params.sort = 'price_high';
+  else if (sort === 'review_score') params.sort = 'review_score';
+
+  console.log("Paramètres envoyés à Google:", params); // Pour débugger sur Vercel
 
   try {
     const [googleRes, supabaseRes] = await Promise.all([
@@ -61,7 +76,6 @@ export async function GET(request: Request) {
 
     if (data.error) return NextResponse.json({ error: data.error }, { status: 500 });
 
-    // --- NETTOYAGE DES PRIX ---
     const parsePrice = (priceInput: any) => {
       if (!priceInput) return 0;
       let clean = priceInput.toString().replace(/[^0-9.,]/g, '').replace(',', '.');
@@ -72,7 +86,6 @@ export async function GET(request: Request) {
     let products = data.shopping_results?.map((item: any) => {
         const priceValue = parsePrice(item.price);
         
-        // Livraison
         let shippingCost = 0;
         let shippingLabel = ""; 
         const deliveryText = item.delivery || ""; 
@@ -91,7 +104,6 @@ export async function GET(request: Request) {
             }
         }
 
-        // Matching Marchand
         let finalLink = item.link;
         let merchantId = item.source || "Autre"; 
         const matchedMerchant = merchants.find((m: any) => 
@@ -128,14 +140,11 @@ export async function GET(request: Request) {
         };
     }) || [];
 
-    // --- IMPORTANT : ON RENVOIE LES FILTRES (FACETS) ---
-    // Google nous donne ici la liste des marques, magasins, etc. disponibles
     const filters = data.filters || [];
 
     return NextResponse.json({ products, filters });
 
   } catch (error) {
-    console.error(error);
     return NextResponse.json({ error: 'Failed to fetch data' }, { status: 500 });
   }
 }
