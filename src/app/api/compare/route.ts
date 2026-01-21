@@ -12,8 +12,31 @@ export async function GET(request: Request) {
   const query = searchParams.get('q');
   const sort = searchParams.get('sort');
   const userLocation = searchParams.get('location') || "Canada";
+  
+  // --- NOUVEAUX FILTRES ---
+  const minPrice = searchParams.get('min_price');
+  const maxPrice = searchParams.get('max_price');
+  const condition = searchParams.get('condition'); // 'new' ou 'used'
 
   if (!query) return NextResponse.json({ error: 'Query required' }, { status: 400 });
+
+  // CONSTRUCTION DU PARAMÈTRE "tbs" (Filtres Google)
+  // tbs est une chaîne bizarre que Google utilise pour filtrer
+  let tbsArray = [];
+  
+  // 1. Filtre Prix
+  if (minPrice || maxPrice) {
+    tbsArray.push('price:1'); // Active le mode prix
+    if (minPrice) tbsArray.push(`ppr_min:${minPrice}`);
+    if (maxPrice) tbsArray.push(`ppr_max:${maxPrice}`);
+  }
+
+  // 2. Filtre État (new:1 = Neuf, used:1 = Usagé)
+  if (condition === 'new') tbsArray.push('new:1');
+  if (condition === 'used') tbsArray.push('used:1');
+
+  // On joint tout avec des virgules (ex: "price:1,ppr_min:10,new:1")
+  const tbsString = tbsArray.join(',');
 
   const apiKey = process.env.SERPAPI_KEY;
   const params = new URLSearchParams({
@@ -24,11 +47,12 @@ export async function GET(request: Request) {
     gl: "ca",
     hl: "fr",
     location: userLocation, 
-    num: "20"
+    num: "20",
+    tbs: tbsString // <--- ON ENVOIE LES FILTRES ICI
   });
 
   try {
-    // 1. On interroge la table "Merchant" (Celle avec majuscule !)
+    // On lance les requêtes en parallèle (Google + Base de données Marchands)
     const [googleRes, supabaseRes] = await Promise.all([
       fetch(`https://serpapi.com/search.json?${params}`),
       supabase.from('Merchant').select('*') 
@@ -49,7 +73,7 @@ export async function GET(request: Request) {
     let products = data.shopping_results?.map((item: any) => {
         const priceValue = parsePrice(item.price);
         
-        // --- LIVRAISON ---
+        // --- LOGIQUE LIVRAISON ---
         let shippingCost = 0;
         let shippingLabel = "?"; 
         const deliveryText = item.delivery || ""; 
@@ -73,40 +97,27 @@ export async function GET(request: Request) {
 
         // --- LIEN INTELLIGENT ---
         let finalLink = item.link;
-        let merchantId = null; // Sera 'Amazon', 'Walmart', etc.
+        let merchantId = null; 
 
-        // On cherche si la source Google contient le nom d'un de nos marchands
         const matchedMerchant = merchants.find((m: any) => 
             item.source && item.source.toLowerCase().includes(m.name.toLowerCase())
         );
 
-// ... code précédent ...
-
         if (matchedMerchant) {
-            merchantId = matchedMerchant.id; // On récupère l'ID texte ('Amazon', 'Best Buy')
-            
-            // Si on a l'URL de recherche spéciale, on l'utilise
+            merchantId = matchedMerchant.id;
             if (matchedMerchant.search_url) {
-                
-                // --- NETTOYAGE INTELLIGENT DU TITRE ---
-                // 1. On enlève les caractères spéciaux qui cassent les recherches (parentheses, crochets, slashs)
+                // Nettoyage du titre pour Best Buy etc.
                 let cleanTitle = item.title.replace(/[\(\)\[\]\/\\,\-]/g, ' ');
-                
-                // 2. On enlève les espaces multiples créés par le remplacement
                 cleanTitle = cleanTitle.replace(/\s+/g, ' ').trim();
-
-                // 3. On ne garde que les 6 premiers mots (Best Buy déteste les phrases trop longues)
                 const words = cleanTitle.split(' ');
                 if (words.length > 6) {
                     cleanTitle = words.slice(0, 6).join(' ');
                 }
-                // ---------------------------------------
 
                 const encodedTitle = encodeURIComponent(cleanTitle);
                 finalLink = `${matchedMerchant.search_url}${encodedTitle}${matchedMerchant.affiliate_suffix || ''}`;
             }
         } else {
-             // ... reste du code ...
             if (item.product_link) finalLink = item.product_link;
             if (item.offer_url) finalLink = item.offer_url;
         }
@@ -119,12 +130,13 @@ export async function GET(request: Request) {
             total_price_value: priceValue + shippingCost,
             source: item.source,
             link: finalLink,
-            merchant_id: merchantId, // Envoie 'Amazon' ou 'Walmart' à l'app mobile
+            merchant_id: merchantId, 
             image: item.thumbnail,
             rating: item.rating
         };
     }) || [];
 
+    // TRI MANUEL (Google ne trie pas toujours parfaitement le "total price")
     if (sort === 'asc') {
       products.sort((a: any, b: any) => a.total_price_value - b.total_price_value);
     } else if (sort === 'desc') {
