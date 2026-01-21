@@ -13,29 +13,27 @@ export async function GET(request: Request) {
   const sort = searchParams.get('sort');
   const userLocation = searchParams.get('location') || "Canada";
   
-  // --- NOUVEAUX FILTRES ---
   const minPrice = searchParams.get('min_price');
   const maxPrice = searchParams.get('max_price');
   const condition = searchParams.get('condition'); // 'new' ou 'used'
 
   if (!query) return NextResponse.json({ error: 'Query required' }, { status: 400 });
 
-  // CONSTRUCTION DU PARAMÈTRE "tbs" (Filtres Google)
-  // tbs est une chaîne bizarre que Google utilise pour filtrer
-  let tbsArray = [];
+  // --- CORRECTION MAJEURE DES FILTRES (TBS) ---
+  // On commence par "vw:g,mr:1" qui force Google à accepter les filtres
+  let tbsArray = ["vw:g", "mr:1"]; 
   
   // 1. Filtre Prix
   if (minPrice || maxPrice) {
-    tbsArray.push('price:1'); // Active le mode prix
+    tbsArray.push('price:1'); // Active le flag prix
     if (minPrice) tbsArray.push(`ppr_min:${minPrice}`);
     if (maxPrice) tbsArray.push(`ppr_max:${maxPrice}`);
   }
 
-  // 2. Filtre État (new:1 = Neuf, used:1 = Usagé)
+  // 2. Filtre État
   if (condition === 'new') tbsArray.push('new:1');
-  if (condition === 'used') tbsArray.push('used:1');
+  if (condition === 'used') tbsArray.push('used:1'); // Parfois 'good:1' fonctionne aussi pour usagé
 
-  // On joint tout avec des virgules (ex: "price:1,ppr_min:10,new:1")
   const tbsString = tbsArray.join(',');
 
   const apiKey = process.env.SERPAPI_KEY;
@@ -48,11 +46,10 @@ export async function GET(request: Request) {
     hl: "fr",
     location: userLocation, 
     num: "20",
-    tbs: tbsString // <--- ON ENVOIE LES FILTRES ICI
+    tbs: tbsString // On envoie la formule magique
   });
 
   try {
-    // On lance les requêtes en parallèle (Google + Base de données Marchands)
     const [googleRes, supabaseRes] = await Promise.all([
       fetch(`https://serpapi.com/search.json?${params}`),
       supabase.from('Merchant').select('*') 
@@ -73,7 +70,7 @@ export async function GET(request: Request) {
     let products = data.shopping_results?.map((item: any) => {
         const priceValue = parsePrice(item.price);
         
-        // --- LOGIQUE LIVRAISON ---
+        // --- LIVRAISON ---
         let shippingCost = 0;
         let shippingLabel = "?"; 
         const deliveryText = item.delivery || ""; 
@@ -106,14 +103,12 @@ export async function GET(request: Request) {
         if (matchedMerchant) {
             merchantId = matchedMerchant.id;
             if (matchedMerchant.search_url) {
-                // Nettoyage du titre pour Best Buy etc.
+                // Nettoyage titre
                 let cleanTitle = item.title.replace(/[\(\)\[\]\/\\,\-]/g, ' ');
                 cleanTitle = cleanTitle.replace(/\s+/g, ' ').trim();
                 const words = cleanTitle.split(' ');
-                if (words.length > 6) {
-                    cleanTitle = words.slice(0, 6).join(' ');
-                }
-
+                if (words.length > 6) cleanTitle = words.slice(0, 6).join(' ');
+                
                 const encodedTitle = encodeURIComponent(cleanTitle);
                 finalLink = `${matchedMerchant.search_url}${encodedTitle}${matchedMerchant.affiliate_suffix || ''}`;
             }
@@ -132,11 +127,13 @@ export async function GET(request: Request) {
             link: finalLink,
             merchant_id: merchantId, 
             image: item.thumbnail,
-            rating: item.rating
+            // --- INFO AVIS ---
+            rating: item.rating, // Note (ex: 4.5)
+            reviews: item.reviews // Nombre d'avis (ex: 1200)
         };
     }) || [];
 
-    // TRI MANUEL (Google ne trie pas toujours parfaitement le "total price")
+    // TRI MANUEL (Gardons-le pour être sûr)
     if (sort === 'asc') {
       products.sort((a: any, b: any) => a.total_price_value - b.total_price_value);
     } else if (sort === 'desc') {
