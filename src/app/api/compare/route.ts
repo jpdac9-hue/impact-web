@@ -18,36 +18,18 @@ export async function GET(request: Request) {
     const userLocation = searchParams.get('location') || "Canada";
     
     // Filtres
-    const minPrice = searchParams.get('min_price');
-    const maxPrice = searchParams.get('max_price');
+    const minPriceRaw = searchParams.get('min_price');
+    const maxPriceRaw = searchParams.get('max_price');
     const condition = searchParams.get('condition');
     const tbsParam = searchParams.get('tbs');
 
+    // Conversion en nombres pour le filtrage manuel
+    const minPrice = minPriceRaw ? parseFloat(minPriceRaw) : 0;
+    const maxPrice = maxPriceRaw ? parseFloat(maxPriceRaw) : Infinity;
+
     const apiKey = process.env.SERPAPI_KEY;
 
-    // --- CONSTRUCTION DU TBS (Filtres Google) ---
-    let finalTbs = "";
-
-    if (tbsParam) {
-      // Cas A : Filtre direct (Affiner)
-      finalTbs = tbsParam;
-    } else {
-      // Cas B : Filtres manuels (Prix/État)
-      let tbsArray = ["vw:g", "mr:1"]; // Vue Grille + Marchands
-      
-      if (minPrice || maxPrice) {
-        tbsArray.push('price:1');
-        if (minPrice) tbsArray.push(`ppr_min:${minPrice}`);
-        if (maxPrice) tbsArray.push(`ppr_max:${maxPrice}`);
-      }
-
-      if (condition === 'new') tbsArray.push('new:1');
-      if (condition === 'used') tbsArray.push('used:1');
-
-      finalTbs = tbsArray.join(',');
-    }
-
-    // --- CONSTRUCTION DES PARAMÈTRES ---
+    // --- CONSTRUCTION PARAMÈTRES GOOGLE ---
     const params: any = {
       api_key: apiKey || '',
       engine: "google_shopping",
@@ -56,14 +38,33 @@ export async function GET(request: Request) {
       gl: "ca",
       hl: "fr",
       location: userLocation,
-      num: "20",
-      tbs: finalTbs // On assigne le TBS calculé
+      num: "50", // ON DEMANDE PLUS DE RÉSULTATS POUR AVOIR DU CHOIX APRÈS FILTRAGE
     };
 
-    // Ajout du tri
+    // 1. TENTATIVE DE FILTRAGE GOOGLE (Best Effort)
+    let tbsArray = ["vw:g", "mr:1"]; // Grid + Merchant
+    
+    if (tbsParam) {
+      params.tbs = tbsParam; // Si on a un filtre "Affiner" précis
+    } else {
+      // Construction manuelle
+      if (minPriceRaw || maxPriceRaw) {
+        tbsArray.push('price:1');
+        if (minPriceRaw) tbsArray.push(`ppr_min:${minPriceRaw}`);
+        if (maxPriceRaw) tbsArray.push(`ppr_max:${maxPriceRaw}`);
+      }
+      if (condition === 'new') tbsArray.push('new:1');
+      if (condition === 'used') tbsArray.push('used:1');
+      
+      params.tbs = tbsArray.join(',');
+    }
+
+    // 2. TENTATIVE DE TRI GOOGLE
     if (sort === 'price_low') params.sort = 'price_low';
     else if (sort === 'price_high') params.sort = 'price_high';
     else if (sort === 'review_score') params.sort = 'review_score';
+
+    console.log("Paramètres Google:", JSON.stringify(params));
 
     // --- APPELS API ---
     const [googleRes, supabaseRes] = await Promise.all([
@@ -90,10 +91,10 @@ export async function GET(request: Request) {
     let products = data.shopping_results?.map((item: any) => {
         const priceValue = parsePrice(item.price);
         
+        // Livraison
         let shippingCost = 0;
         let shippingLabel = ""; 
         const deliveryText = item.delivery || ""; 
-
         if (deliveryText) {
             const lowerText = deliveryText.toLowerCase();
             if (lowerText.includes('gratuit') || lowerText.includes('free')) {
@@ -108,6 +109,7 @@ export async function GET(request: Request) {
             }
         }
 
+        // Matching Marchand
         let finalLink = item.link;
         let merchantId = item.source || "Autre"; 
         const matchedMerchant = merchants.find((m: any) => 
@@ -135,6 +137,7 @@ export async function GET(request: Request) {
             price_display: item.price,
             shipping_display: shippingLabel,
             total_price_value: priceValue + shippingCost,
+            price_raw: priceValue, // Pour le filtrage manuel
             source: item.source,
             link: finalLink,
             merchant_id: merchantId,
@@ -143,6 +146,27 @@ export async function GET(request: Request) {
             reviews: item.reviews
         };
     }) || [];
+
+    // --- 3. FILTRAGE MANUEL (FILET DE SÉCURITÉ) ---
+    // Si Google a ignoré nos filtres, on les applique brutalement ici.
+    
+    if (minPriceRaw || maxPriceRaw) {
+      products = products.filter((p: any) => {
+        if (p.price_raw < minPrice) return false;
+        if (p.price_raw > maxPrice) return false;
+        return true;
+      });
+    }
+
+    // --- 4. TRI MANUEL (DOUBLE SÉCURITÉ) ---
+    // Si Google n'a pas bien trié, on le refait
+    if (sort === 'price_low') {
+        products.sort((a: any, b: any) => a.total_price_value - b.total_price_value);
+    } else if (sort === 'price_high') {
+        products.sort((a: any, b: any) => b.total_price_value - a.total_price_value);
+    } else if (sort === 'review_score') {
+        products.sort((a: any, b: any) => (b.rating || 0) - (a.rating || 0));
+    }
 
     return NextResponse.json({ products, filters: data.filters || [] });
 
