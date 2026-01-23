@@ -23,13 +23,12 @@ export async function GET(request: Request) {
     const condition = searchParams.get('condition');
     const tbsParam = searchParams.get('tbs');
 
-    // Conversion en nombres pour le filtrage manuel
     const minPrice = minPriceRaw ? parseFloat(minPriceRaw) : 0;
     const maxPrice = maxPriceRaw ? parseFloat(maxPriceRaw) : Infinity;
 
     const apiKey = process.env.SERPAPI_KEY;
 
-    // --- CONSTRUCTION PARAMÈTRES GOOGLE ---
+    // --- PARAMÈTRES GOOGLE ---
     const params: any = {
       api_key: apiKey || '',
       engine: "google_shopping",
@@ -38,16 +37,15 @@ export async function GET(request: Request) {
       gl: "ca",
       hl: "fr",
       location: userLocation,
-      num: "50", // ON DEMANDE PLUS DE RÉSULTATS POUR AVOIR DU CHOIX APRÈS FILTRAGE
+      num: "50", // On demande 50 résultats pour avoir du choix
     };
 
-    // 1. TENTATIVE DE FILTRAGE GOOGLE (Best Effort)
-    let tbsArray = ["vw:g", "mr:1"]; // Grid + Merchant
+    // 1. FILTRAGE GOOGLE
+    let tbsArray = ["vw:g", "mr:1"]; 
     
     if (tbsParam) {
-      params.tbs = tbsParam; // Si on a un filtre "Affiner" précis
+      params.tbs = tbsParam;
     } else {
-      // Construction manuelle
       if (minPriceRaw || maxPriceRaw) {
         tbsArray.push('price:1');
         if (minPriceRaw) tbsArray.push(`ppr_min:${minPriceRaw}`);
@@ -59,12 +57,10 @@ export async function GET(request: Request) {
       params.tbs = tbsArray.join(',');
     }
 
-    // 2. TENTATIVE DE TRI GOOGLE
+    // 2. TRI GOOGLE
     if (sort === 'price_low') params.sort = 'price_low';
     else if (sort === 'price_high') params.sort = 'price_high';
     else if (sort === 'review_score') params.sort = 'review_score';
-
-    console.log("Paramètres Google:", JSON.stringify(params));
 
     // --- APPELS API ---
     const [googleRes, supabaseRes] = await Promise.all([
@@ -75,12 +71,9 @@ export async function GET(request: Request) {
     const data = await googleRes.json();
     const merchants = supabaseRes.data || []; 
 
-    if (data.error) {
-      console.error("Erreur SerpApi:", data.error);
-      return NextResponse.json({ error: data.error }, { status: 500 });
-    }
+    if (data.error) return NextResponse.json({ error: data.error }, { status: 500 });
 
-    // --- TRAITEMENT DES RÉSULTATS ---
+    // --- TRAITEMENT ---
     const parsePrice = (priceInput: any) => {
       if (!priceInput) return 0;
       let clean = priceInput.toString().replace(/[^0-9.,]/g, '').replace(',', '.');
@@ -91,20 +84,23 @@ export async function GET(request: Request) {
     let products = data.shopping_results?.map((item: any) => {
         const priceValue = parsePrice(item.price);
         
-        // Livraison
+        // --- LOGIQUE LIVRAISON AMÉLIORÉE ---
         let shippingCost = 0;
-        let shippingLabel = ""; 
+        let shippingLabel = ""; // Vide par défaut
         const deliveryText = item.delivery || ""; 
+        
         if (deliveryText) {
             const lowerText = deliveryText.toLowerCase();
+            // On cherche "gratuit" ou "free"
             if (lowerText.includes('gratuit') || lowerText.includes('free')) {
                 shippingCost = 0;
-                shippingLabel = "Gratuit";
+                shippingLabel = "Livraison Gratuite"; // Texte explicite
             } else {
+                // On cherche un prix dans le texte
                 const extractedCost = parsePrice(deliveryText);
                 if (extractedCost > 0) {
                     shippingCost = extractedCost;
-                    shippingLabel = `+${extractedCost.toFixed(2)}$ Liv.`;
+                    shippingLabel = `+ ${extractedCost.toFixed(2)}$ Livraison`; // Texte explicite
                 }
             }
         }
@@ -135,9 +131,9 @@ export async function GET(request: Request) {
             id: item.position,
             title: item.title,
             price_display: item.price,
-            shipping_display: shippingLabel,
-            total_price_value: priceValue + shippingCost,
-            price_raw: priceValue, // Pour le filtrage manuel
+            shipping_display: shippingLabel, // Contient maintenant "Livraison Gratuite" ou "+ 10$ Livraison"
+            total_price_value: priceValue + shippingCost, // Le total calculé
+            price_raw: priceValue, 
             source: item.source,
             link: finalLink,
             merchant_id: merchantId,
@@ -147,9 +143,7 @@ export async function GET(request: Request) {
         };
     }) || [];
 
-    // --- 3. FILTRAGE MANUEL (FILET DE SÉCURITÉ) ---
-    // Si Google a ignoré nos filtres, on les applique brutalement ici.
-    
+    // 3. FILTRAGE MANUEL (Sécurité)
     if (minPriceRaw || maxPriceRaw) {
       products = products.filter((p: any) => {
         if (p.price_raw < minPrice) return false;
@@ -158,8 +152,7 @@ export async function GET(request: Request) {
       });
     }
 
-    // --- 4. TRI MANUEL (DOUBLE SÉCURITÉ) ---
-    // Si Google n'a pas bien trié, on le refait
+    // 4. TRI MANUEL (Sécurité)
     if (sort === 'price_low') {
         products.sort((a: any, b: any) => a.total_price_value - b.total_price_value);
     } else if (sort === 'price_high') {
@@ -171,7 +164,6 @@ export async function GET(request: Request) {
     return NextResponse.json({ products, filters: data.filters || [] });
 
   } catch (error: any) {
-    console.error("Erreur Backend:", error);
     return NextResponse.json({ error: error.message || 'Internal Error' }, { status: 500 });
   }
 }
