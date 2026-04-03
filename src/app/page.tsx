@@ -81,14 +81,12 @@ export default function Home() {
       <nav className="sticky top-0 z-50 border-b border-white/10 bg-[#0a0a0f]/80 backdrop-blur-xl">
         <div className="max-w-7xl mx-auto px-6 h-16 flex justify-between items-center">
           <Link href="/" className="flex items-center gap-3">
-<div className="w-10 h-10 rounded-xl bg-violet-600 overflow-hidden flex items-center justify-center">
-  <img
-    src="/logo.svg"
-    alt="Remora"
-    className="w-full h-full object-cover"
-    style={{ mixBlendMode: 'screen' }}
-  />
-</div>
+<img
+  src="/logo.svg"
+  alt="Remora"
+  className="h-18 w-18 rounded-xl"
+  style={{ mixBlendMode: 'screen' }}
+/>
             <span className="font-black tracking-tight text-lg bg-gradient-to-r from-violet-400 to-fuchsia-400 bg-clip-text text-transparent">
               REMORA
             </span>
