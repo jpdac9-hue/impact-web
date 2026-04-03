@@ -4,11 +4,13 @@ import { useEffect, useState } from 'react';
 import { supabase } from '@/src/lib/supabase';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { getMe, getMyClicks, getMyStats } from '@/src/lib/api';
 
 export default function ProfilePage() {
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<any>(null);
   const [clicks, setClicks] = useState<any[]>([]);
+  const [stats, setStats] = useState({ totalCashback: 0, totalDonated: 0, totalWithdrawn: 0, balanceAvailable: 0 });
   const router = useRouter();
 
   useEffect(() => {
@@ -16,29 +18,38 @@ export default function ProfilePage() {
   }, []);
 
   const checkUser = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      router.push('/login');
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      router.push('/signin');
       return;
     }
-    setUser(user);
-    fetchClicks(user.id);
+
+    const token = session.access_token;
+
+    try {
+      // Synchronise le profil dans public.User si première connexion
+      await fetch(`${process.env.NEXT_PUBLIC_API_URL}/users/sync`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      const [profile, clicksData, statsData] = await Promise.all([
+        getMe(token),
+        getMyClicks(token),
+        getMyStats(token),
+      ]);
+
+      setUser(profile);
+      setClicks(clicksData);
+      setStats(statsData);
+    } catch (err) {
+      console.error('Erreur chargement dashboard:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const fetchClicks = async (userId: string) => {
-    const { data } = await supabase
-      .from('clicks')
-      .select('*')
-      .eq('user_id', userId)
-      .order('created_at', { ascending: false });
-    
-    setClicks(data || []);
-    setLoading(false);
-  };
-
-  // CALCUL DES STATISTIQUES
-  const totalDonations = clicks.reduce((acc, click) => acc + (click.actual_gain || 0), 0);
-  const merchantCount = new Set(clicks.map(c => c.merchant_name)).size;
+  const merchantCount = new Set(clicks.map(c => c.merchantName)).size;
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -46,19 +57,26 @@ export default function ProfilePage() {
     router.refresh();
   };
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center bg-gray-50 text-black">Chargement...</div>;
+  if (loading) return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 text-black">
+      Chargement...
+    </div>
+  );
 
   return (
     <div className="min-h-screen bg-gray-50 p-6 md:p-12 text-black">
       <div className="max-w-5xl mx-auto">
-        
+
         {/* Navigation Haute */}
         <div className="flex justify-between items-center mb-10">
           <Link href="/" className="group flex items-center text-blue-600 font-bold transition">
-            <span className="mr-2 group-hover:-translate-x-1 transition-transform">←</span> 
+            <span className="mr-2 group-hover:-translate-x-1 transition-transform">←</span>
             Retour aux boutiques
           </Link>
-          <button onClick={handleLogout} className="bg-white px-4 py-2 rounded-xl text-gray-400 hover:text-red-500 font-bold border border-gray-100 shadow-sm transition">
+          <button
+            onClick={handleLogout}
+            className="bg-white px-4 py-2 rounded-xl text-gray-400 hover:text-red-500 font-bold border border-gray-100 shadow-sm transition"
+          >
             Déconnexion
           </button>
         </div>
@@ -66,27 +84,34 @@ export default function ProfilePage() {
         {/* Header Profil */}
         <div className="mb-12">
           <h1 className="text-4xl font-black text-gray-900 mb-2 tracking-tight">Mon Impact</h1>
-          <p className="text-gray-500 font-medium">Connecté en tant que : {user?.email}</p>
+          <p className="text-gray-500 font-medium">
+            Connecté en tant que : {user?.email}
+          </p>
         </div>
 
         {/* CARTES DE STATISTIQUES */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-12">
           <div className="bg-blue-600 p-8 rounded-[2rem] text-white shadow-xl shadow-blue-100 relative overflow-hidden">
             <div className="relative z-10">
-              <p className="text-blue-100 font-bold uppercase text-xs tracking-wider mb-2">Total Donné</p>
-              <h2 className="text-5xl font-black">{totalDonations.toFixed(2)} $</h2>
+              <p className="text-blue-100 font-bold uppercase text-xs tracking-wider mb-2">Solde disponible</p>
+              <h2 className="text-5xl font-black">{stats.balanceAvailable.toFixed(2)} $</h2>
             </div>
             <div className="absolute -right-4 -bottom-4 text-8xl opacity-10">💰</div>
           </div>
 
           <div className="bg-white p-8 rounded-[2rem] border border-gray-100 shadow-sm">
-            <p className="text-gray-400 font-bold uppercase text-xs tracking-wider mb-2">Boutiques visitées</p>
-            <h2 className="text-5xl font-black text-gray-900">{merchantCount}</h2>
+            <p className="text-gray-400 font-bold uppercase text-xs tracking-wider mb-2">Total cashback</p>
+            <h2 className="text-5xl font-black text-gray-900">{stats.totalCashback.toFixed(2)} $</h2>
           </div>
 
           <div className="bg-white p-8 rounded-[2rem] border border-gray-100 shadow-sm">
-            <p className="text-gray-400 font-bold uppercase text-xs tracking-wider mb-2">Nombre de clics</p>
-            <h2 className="text-5xl font-black text-gray-900">{clicks.length}</h2>
+            <p className="text-gray-400 font-bold uppercase text-xs tracking-wider mb-2">Total donné</p>
+            <h2 className="text-5xl font-black text-gray-900">{stats.totalDonated.toFixed(2)} $</h2>
+          </div>
+
+          <div className="bg-white p-8 rounded-[2rem] border border-gray-100 shadow-sm">
+            <p className="text-gray-400 font-bold uppercase text-xs tracking-wider mb-2">Boutiques visitées</p>
+            <h2 className="text-5xl font-black text-gray-900">{merchantCount}</h2>
           </div>
         </div>
 
@@ -101,25 +126,44 @@ export default function ProfilePage() {
                 <div key={click.id} className="p-6 flex justify-between items-center hover:bg-gray-50 transition">
                   <div className="flex items-center">
                     <div className="w-12 h-12 rounded-2xl bg-blue-50 flex items-center justify-center text-xl mr-4 text-blue-600 font-bold">
-                      {click.merchant_name[0]}
+                      {click.merchantName?.[0] ?? '?'}
                     </div>
                     <div>
-                      <p className="font-bold text-gray-900">{click.merchant_name}</p>
-                      <p className="text-sm text-gray-400">{new Date(click.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}</p>
+                      <p className="font-bold text-gray-900">{click.merchantName}</p>
+                      {click.productTitle && (
+                        <p className="text-sm text-gray-500">{click.productTitle}</p>
+                      )}
+                      <p className="text-sm text-gray-400">
+                        {new Date(click.createdAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}
+                      </p>
                     </div>
                   </div>
                   <div className="text-right">
-                    <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-black uppercase">
-                      Confirmé
+                    <span className={`px-3 py-1 rounded-full text-xs font-black uppercase ${
+                      click.status === 'confirmed'
+                        ? 'bg-green-100 text-green-700'
+                        : click.status === 'cancelled'
+                        ? 'bg-red-100 text-red-700'
+                        : 'bg-yellow-100 text-yellow-700'
+                    }`}>
+                      {click.status === 'confirmed' ? 'Confirmé'
+                        : click.status === 'cancelled' ? 'Annulé'
+                        : 'En attente'}
                     </span>
+                    {click.actualGain > 0 && (
+                      <p className="text-sm font-bold text-green-600 mt-1">+{click.actualGain.toFixed(2)} $</p>
+                    )}
                   </div>
                 </div>
               ))
             ) : (
-              <div className="p-20 text-center text-gray-400 italic">Aucune donnée pour le moment.</div>
+              <div className="p-20 text-center text-gray-400 italic">
+                Aucune activité pour le moment. Commencez à magasiner !
+              </div>
             )}
           </div>
         </div>
+
       </div>
     </div>
   );
