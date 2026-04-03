@@ -80,12 +80,23 @@ export default function Home() {
       {/* NAVBAR */}
       <nav className="sticky top-0 z-50 border-b border-white/10 bg-[#0a0a0f]/80 backdrop-blur-xl">
         <div className="max-w-7xl mx-auto px-6 h-16 flex justify-between items-center">
-          <Link href="/" className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500 to-fuchsia-500 flex items-center justify-center font-black text-sm">I</div>
-            <span className="font-black tracking-tight text-lg bg-gradient-to-r from-violet-400 to-fuchsia-400 bg-clip-text text-transparent">IMPACT.</span>
+          <Link href="/" className="flex items-center gap-3">
+<div className="w-10 h-10 rounded-xl bg-violet-600 overflow-hidden flex items-center justify-center">
+  <img
+    src="/logo.svg"
+    alt="Remora"
+    className="w-full h-full object-cover"
+    style={{ mixBlendMode: 'screen' }}
+  />
+</div>
+            <span className="font-black tracking-tight text-lg bg-gradient-to-r from-violet-400 to-fuchsia-400 bg-clip-text text-transparent">
+              REMORA
+            </span>
           </Link>
           <div className="flex items-center gap-4">
-            <Link href="/dashboard" className="text-sm font-medium text-white/50 hover:text-white transition">Mon Espace</Link>
+            <Link href="/dashboard" className="text-sm font-medium text-white/50 hover:text-white transition">
+              Mon Espace
+            </Link>
             {user ? (
               <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-500 to-fuchsia-500 flex items-center justify-center font-bold text-xs">
                 {user.email[0].toUpperCase()}
@@ -104,7 +115,6 @@ export default function Home() {
 
       {/* HERO */}
       <section className="relative overflow-hidden">
-        {/* Blobs décoratifs */}
         <div className="absolute -top-40 -left-40 w-96 h-96 bg-violet-600/20 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute -top-20 right-0 w-80 h-80 bg-fuchsia-600/20 rounded-full blur-3xl pointer-events-none" />
 
@@ -114,16 +124,16 @@ export default function Home() {
             Cashback + Charité • 100% gratuit
           </div>
           <h1 className="text-5xl md:text-7xl font-black tracking-tight mb-4 leading-none">
-            Magasinez.{' '}
+            Shop.{' '}
             <span className="bg-gradient-to-r from-violet-400 via-fuchsia-400 to-pink-400 bg-clip-text text-transparent">
-              Donnez.
+              Earn. Give.
             </span>
           </h1>
           <p className="text-white/50 text-lg max-w-xl mx-auto mb-8">
             Chaque achat génère un cashback partagé entre vous et votre organisme de charité favori.
           </p>
 
-          {/* Barre de recherche */}
+          {/* Barre de recherche centrée */}
           <div className="max-w-lg mx-auto relative">
             <span className="absolute left-4 top-1/2 -translate-y-1/2 text-white/30 text-lg">🔍</span>
             <input
@@ -189,7 +199,6 @@ export default function Home() {
                   key={merchant.id}
                   className="group relative bg-white/5 hover:bg-white/8 border border-white/10 hover:border-violet-500/40 rounded-3xl p-5 transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl hover:shadow-violet-500/10"
                 >
-                  {/* Badge type */}
                   <div className={`absolute top-4 left-4 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${
                     isDon
                       ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
@@ -198,7 +207,6 @@ export default function Home() {
                     {isDon ? '🎁 Don' : '💰 Cashback'}
                   </div>
 
-                  {/* Bouton favori */}
                   <button
                     onClick={e => { e.preventDefault(); toggleFavorite(merchant.id); }}
                     className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 transition-all active:scale-90"
@@ -206,7 +214,6 @@ export default function Home() {
                     {isFav ? '❤️' : '🤍'}
                   </button>
 
-                  {/* Logo */}
                   <div className="mt-8 mb-4 w-16 h-16 rounded-2xl bg-white/10 border border-white/10 flex items-center justify-center p-2 overflow-hidden">
                     {merchant.logoUrl ? (
                       <img src={merchant.logoUrl} alt={merchant.name} className="w-full h-full object-contain" />
@@ -215,13 +222,11 @@ export default function Home() {
                     )}
                   </div>
 
-                  {/* Infos */}
                   <h3 className="font-black text-white text-lg mb-1">{merchant.name}</h3>
                   <p className="text-white/40 text-xs mb-4 line-clamp-2 leading-relaxed min-h-[2rem]">
                     {merchant.offerText || 'Offre partenaire disponible'}
                   </p>
 
-                  {/* CTA */}
                   <a
                     href={merchant.url}
                     target="_blank"
