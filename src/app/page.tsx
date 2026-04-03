@@ -12,19 +12,17 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
-  
   const [favorites, setFavorites] = useState<string[]>([]);
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
   const [user, setUser] = useState<any>(null);
-  
   const router = useRouter();
 
   const categories = [
-    { label: 'Tout', value: 'All' },
-    { label: 'Mode', value: 'Mode' },
-    { label: 'Tech', value: 'High-Tech' },
-    { label: 'Maison', value: 'Maison' },
-    { label: 'Voyage', value: 'Voyage' },
+    { label: '✨ Tout', value: 'All' },
+    { label: '👗 Mode', value: 'Mode' },
+    { label: '💻 Tech', value: 'High-Tech' },
+    { label: '🏠 Maison', value: 'Maison' },
+    { label: '✈️ Voyage', value: 'Voyage' },
   ];
 
   useEffect(() => {
@@ -32,7 +30,6 @@ export default function Home() {
     checkUserAndFavorites();
   }, []);
 
-  // ✅ Utilise maintenant NestJS au lieu de Supabase directement
   const fetchMerchants = async () => {
     try {
       const data = await getMerchants();
@@ -47,41 +44,25 @@ export default function Home() {
 
   const checkUserAndFavorites = async () => {
     const { data: { session } } = await supabase.auth.getSession();
-    
     if (session?.user) {
       setUser(session.user);
-      const { data } = await supabase
-        .from('favorites')
-        .select('merchant_id')
-        .eq('user_id', session.user.id);
-      
-      if (data) {
-        setFavorites(data.map((fav: any) => fav.merchant_id));
-      }
+      const { data } = await supabase.from('favorites').select('merchant_id').eq('user_id', session.user.id);
+      if (data) setFavorites(data.map((fav: any) => fav.merchant_id));
     } else {
-      const savedFavorites = localStorage.getItem('impact_favorites');
-      if (savedFavorites) {
-        setFavorites(JSON.parse(savedFavorites));
-      }
+      const saved = localStorage.getItem('impact_favorites');
+      if (saved) setFavorites(JSON.parse(saved));
     }
   };
 
   const toggleFavorite = async (merchantId: string) => {
-    const isFavorite = favorites.includes(merchantId);
-    const newFavorites = isFavorite
-      ? favorites.filter(id => id !== merchantId)
-      : [...favorites, merchantId];
-
-    setFavorites(newFavorites);
-
+    const isFav = favorites.includes(merchantId);
+    const next = isFav ? favorites.filter(id => id !== merchantId) : [...favorites, merchantId];
+    setFavorites(next);
     if (user) {
-      if (isFavorite) {
-        await supabase.from('favorites').delete().eq('user_id', user.id).eq('merchant_id', merchantId);
-      } else {
-        await supabase.from('favorites').insert({ user_id: user.id, merchant_id: merchantId });
-      }
+      if (isFav) await supabase.from('favorites').delete().eq('user_id', user.id).eq('merchant_id', merchantId);
+      else await supabase.from('favorites').insert({ user_id: user.id, merchant_id: merchantId });
     } else {
-      localStorage.setItem('impact_favorites', JSON.stringify(newFavorites));
+      localStorage.setItem('impact_favorites', JSON.stringify(next));
     }
   };
 
@@ -94,141 +75,180 @@ export default function Home() {
   }, [searchQuery, selectedCategory, merchants, showFavoritesOnly, favorites]);
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans pb-24 md:pb-0">
-      
-      {/* NAVBAR DESKTOP */}
-      <nav className="hidden md:flex sticky top-0 z-50 bg-white/80 backdrop-blur-lg border-b border-slate-200">
-        <div className="max-w-7xl mx-auto px-6 h-16 w-full flex justify-between items-center">
-          <Link href="/" className="flex items-center gap-2 group">
-            <div className="bg-slate-900 text-white font-bold w-8 h-8 rounded-lg flex items-center justify-center">I</div>
-            <span className="font-bold tracking-tight text-lg">IMPACT.</span>
+    <div className="min-h-screen bg-[#0a0a0f] text-white font-sans pb-24 md:pb-0">
+
+      {/* NAVBAR */}
+      <nav className="sticky top-0 z-50 border-b border-white/10 bg-[#0a0a0f]/80 backdrop-blur-xl">
+        <div className="max-w-7xl mx-auto px-6 h-16 flex justify-between items-center">
+          <Link href="/" className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500 to-fuchsia-500 flex items-center justify-center font-black text-sm">I</div>
+            <span className="font-black tracking-tight text-lg bg-gradient-to-r from-violet-400 to-fuchsia-400 bg-clip-text text-transparent">IMPACT.</span>
           </Link>
           <div className="flex items-center gap-4">
-            <Link href="/dashboard" className="text-sm font-medium text-slate-500 hover:text-slate-900 transition">Mon Espace</Link>
+            <Link href="/dashboard" className="text-sm font-medium text-white/50 hover:text-white transition">Mon Espace</Link>
             {user ? (
-              <span className="text-xs font-bold text-green-600 bg-green-50 px-3 py-1 rounded-full border border-green-200">Connecté</span>
+              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-500 to-fuchsia-500 flex items-center justify-center font-bold text-xs">
+                {user.email[0].toUpperCase()}
+              </div>
             ) : (
-              <button onClick={() => router.push('/signin')} className="bg-slate-900 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-slate-800 transition">Connexion</button>
+              <button
+                onClick={() => router.push('/signin')}
+                className="bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white px-4 py-2 rounded-xl text-sm font-bold transition-all"
+              >
+                Connexion
+              </button>
             )}
           </div>
         </div>
       </nav>
 
-      {/* HEADER MOBILE */}
-      <div className="md:hidden bg-white px-6 pt-12 pb-4 border-b border-slate-100 sticky top-0 z-40">
-        <div className="flex justify-between items-center mb-4">
-          <h1 className="text-2xl font-black tracking-tighter">IMPACT.</h1>
-          {user ? (
-            <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center text-green-700 font-bold text-xs">
-              {user.email[0].toUpperCase()}
-            </div>
-          ) : (
-            <button onClick={() => router.push('/signin')} className="text-sm font-bold text-slate-900">Connexion</button>
-          )}
-        </div>
-        <div className="relative">
-          <input 
-            type="text" 
-            placeholder="Rechercher..." 
-            className="w-full bg-slate-100 p-3 pl-10 rounded-xl text-sm font-medium outline-none focus:ring-2 focus:ring-slate-900 transition"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
-          <span className="absolute left-3 top-3 text-slate-400">🔍</span>
-        </div>
-      </div>
+      {/* HERO */}
+      <section className="relative overflow-hidden">
+        {/* Blobs décoratifs */}
+        <div className="absolute -top-40 -left-40 w-96 h-96 bg-violet-600/20 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute -top-20 right-0 w-80 h-80 bg-fuchsia-600/20 rounded-full blur-3xl pointer-events-none" />
 
-      {/* CONTENU PRINCIPAL */}
-      <section className="max-w-7xl mx-auto px-4 md:px-6 pt-6 md:pt-12">
-        
-        {/* Filtres */}
-        <div className="flex overflow-x-auto pb-4 gap-2 mb-4 scrollbar-hide -mx-4 px-4 md:mx-0 md:px-0">
+        <div className="max-w-7xl mx-auto px-6 pt-16 pb-12 text-center relative">
+          <div className="inline-flex items-center gap-2 bg-white/5 border border-white/10 rounded-full px-4 py-1.5 text-xs font-bold text-violet-300 mb-6">
+            <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
+            Cashback + Charité • 100% gratuit
+          </div>
+          <h1 className="text-5xl md:text-7xl font-black tracking-tight mb-4 leading-none">
+            Magasinez.{' '}
+            <span className="bg-gradient-to-r from-violet-400 via-fuchsia-400 to-pink-400 bg-clip-text text-transparent">
+              Donnez.
+            </span>
+          </h1>
+          <p className="text-white/50 text-lg max-w-xl mx-auto mb-8">
+            Chaque achat génère un cashback partagé entre vous et votre organisme de charité favori.
+          </p>
+
+          {/* Barre de recherche */}
+          <div className="max-w-lg mx-auto relative">
+            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-white/30 text-lg">🔍</span>
+            <input
+              type="text"
+              placeholder="Rechercher un marchand..."
+              className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 pl-12 pr-4 text-white placeholder-white/30 focus:outline-none focus:border-violet-500 focus:bg-white/10 transition-all text-sm"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+            />
+          </div>
+        </div>
+      </section>
+
+      {/* FILTRES */}
+      <div className="max-w-7xl mx-auto px-6 mb-8">
+        <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
           <button
             onClick={() => setShowFavoritesOnly(!showFavoritesOnly)}
-            className={`flex-shrink-0 px-4 py-2 rounded-full text-xs font-bold uppercase transition-all flex items-center gap-2 ${
-              showFavoritesOnly ? 'bg-rose-500 text-white' : 'bg-white text-rose-500 border border-rose-200'
+            className={`flex-shrink-0 px-4 py-2 rounded-full text-xs font-bold transition-all border ${
+              showFavoritesOnly
+                ? 'bg-rose-500 border-rose-500 text-white'
+                : 'bg-white/5 border-white/10 text-white/60 hover:border-rose-500/50 hover:text-rose-400'
             }`}
           >
-            {showFavoritesOnly ? '❤️' : '🤍 Favoris'}
+            ❤️ Favoris
           </button>
-          
-          {categories.map((cat) => (
+          {categories.map(cat => (
             <button
               key={cat.value}
               onClick={() => { setSelectedCategory(cat.value); setShowFavoritesOnly(false); }}
-              className={`flex-shrink-0 px-4 py-2 rounded-full text-xs font-bold uppercase transition-all ${
+              className={`flex-shrink-0 px-4 py-2 rounded-full text-xs font-bold transition-all border ${
                 selectedCategory === cat.value && !showFavoritesOnly
-                  ? 'bg-slate-900 text-white' 
-                  : 'bg-white text-slate-500 border border-slate-200'
+                  ? 'bg-gradient-to-r from-violet-600 to-fuchsia-600 border-transparent text-white'
+                  : 'bg-white/5 border-white/10 text-white/60 hover:border-violet-500/50 hover:text-violet-400'
               }`}
             >
               {cat.label}
             </button>
           ))}
         </div>
+      </div>
 
-        {/* Grille Marchands */}
+      {/* GRILLE MARCHANDS */}
+      <section className="max-w-7xl mx-auto px-6">
         {loading ? (
-          <div className="text-center py-20 text-slate-400">Chargement...</div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {[...Array(4)].map((_, i) => (
+              <div key={i} className="bg-white/5 rounded-3xl h-64 animate-pulse border border-white/5" />
+            ))}
+          </div>
+        ) : filteredMerchants.length === 0 ? (
+          <div className="text-center py-20 text-white/30">
+            <div className="text-5xl mb-4">🔍</div>
+            <p>Aucun marchand trouvé</p>
+          </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {filteredMerchants.map((merchant) => (
-              <div key={merchant.id} className="group bg-white rounded-2xl p-4 border border-slate-100 shadow-sm md:hover:shadow-lg transition-all relative">
-                <button 
-                  onClick={(e) => { e.preventDefault(); toggleFavorite(merchant.id); }}
-                  className="absolute top-4 right-4 z-10 w-8 h-8 flex items-center justify-center rounded-full bg-white shadow-sm border border-slate-100 active:scale-90 transition"
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {filteredMerchants.map(merchant => {
+              const isDon = merchant.rewardType === 'Don';
+              const isFav = favorites.includes(merchant.id);
+              return (
+                <div
+                  key={merchant.id}
+                  className="group relative bg-white/5 hover:bg-white/8 border border-white/10 hover:border-violet-500/40 rounded-3xl p-5 transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl hover:shadow-violet-500/10"
                 >
-                  {favorites.includes(merchant.id) ? '❤️' : '🤍'}
-                </button>
+                  {/* Badge type */}
+                  <div className={`absolute top-4 left-4 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                    isDon
+                      ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+                      : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                  }`}>
+                    {isDon ? '🎁 Don' : '💰 Cashback'}
+                  </div>
 
-                <div className="flex items-center gap-4 mb-4"> 
-                  <div className="w-12 h-12 flex-shrink-0 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center p-2">
+                  {/* Bouton favori */}
+                  <button
+                    onClick={e => { e.preventDefault(); toggleFavorite(merchant.id); }}
+                    className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 transition-all active:scale-90"
+                  >
+                    {isFav ? '❤️' : '🤍'}
+                  </button>
+
+                  {/* Logo */}
+                  <div className="mt-8 mb-4 w-16 h-16 rounded-2xl bg-white/10 border border-white/10 flex items-center justify-center p-2 overflow-hidden">
                     {merchant.logoUrl ? (
                       <img src={merchant.logoUrl} alt={merchant.name} className="w-full h-full object-contain" />
                     ) : (
-                      <span className="text-xl">⚡️</span>
+                      <span className="text-2xl font-black text-white/50">{merchant.name[0]}</span>
                     )}
                   </div>
-                  <div>
-                    <h3 className="font-bold text-slate-900">{merchant.name}</h3>
-                    <div className="inline-flex items-center gap-1 bg-slate-50 px-2 py-0.5 rounded text-[10px] font-bold text-slate-500 mt-1">
-                      {merchant.rewardType === 'Don' ? '🎁 Don' : '💰 Cashback'}
-                    </div>
-                  </div>
+
+                  {/* Infos */}
+                  <h3 className="font-black text-white text-lg mb-1">{merchant.name}</h3>
+                  <p className="text-white/40 text-xs mb-4 line-clamp-2 leading-relaxed min-h-[2rem]">
+                    {merchant.offerText || 'Offre partenaire disponible'}
+                  </p>
+
+                  {/* CTA */}
+                  <a
+                    href={merchant.url}
+                    target="_blank"
+                    className="block w-full text-center py-3 rounded-2xl font-bold text-sm transition-all bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white active:scale-95"
+                  >
+                    Activer l'offre →
+                  </a>
                 </div>
-
-                <p className="text-xs text-slate-500 mb-4 line-clamp-2 h-8 leading-relaxed">
-                  {merchant.offerText || "Offre partenaire disponible"}
-                </p>
-
-                <a 
-                  href={merchant.url}
-                  target="_blank"
-                  className="block w-full text-center bg-slate-900 text-white py-3 rounded-xl font-bold text-sm active:scale-95 transition-transform"
-                >
-                  Activer l'offre
-                </a>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
-        
-        <div className="h-8 md:hidden"></div>
       </section>
 
-      {/* BOTTOM TAB BAR */}
-      <div className="md:hidden fixed bottom-0 left-0 w-full bg-white border-t border-slate-200 pb-safe pt-2 px-6 flex justify-between items-end z-50 h-[80px]">
-        <button onClick={() => { setShowFavoritesOnly(false); window.scrollTo(0,0); }} className="flex flex-col items-center gap-1 p-2 w-16">
-          <span className={`text-2xl ${!showFavoritesOnly ? 'grayscale-0' : 'grayscale opacity-50'}`}>🏠</span>
-          <span className={`text-[10px] font-bold ${!showFavoritesOnly ? 'text-slate-900' : 'text-slate-400'}`}>Accueil</span>
+      {/* BOTTOM TAB BAR MOBILE */}
+      <div className="md:hidden fixed bottom-0 left-0 w-full bg-[#0a0a0f]/95 backdrop-blur-xl border-t border-white/10 pb-safe pt-3 px-8 flex justify-between items-end z-50 h-[80px]">
+        <button onClick={() => { setShowFavoritesOnly(false); window.scrollTo(0, 0); }} className="flex flex-col items-center gap-1">
+          <span className="text-xl">🏠</span>
+          <span className="text-[10px] font-bold text-white/60">Accueil</span>
         </button>
-        <button onClick={() => setShowFavoritesOnly(true)} className="flex flex-col items-center gap-1 p-2 w-16">
-          <span className={`text-2xl ${showFavoritesOnly ? 'grayscale-0' : 'grayscale opacity-50'}`}>❤️</span>
-          <span className={`text-[10px] font-bold ${showFavoritesOnly ? 'text-slate-900' : 'text-slate-400'}`}>Favoris</span>
+        <button onClick={() => setShowFavoritesOnly(true)} className="flex flex-col items-center gap-1">
+          <span className="text-xl">❤️</span>
+          <span className="text-[10px] font-bold text-white/60">Favoris</span>
         </button>
-        <button onClick={() => router.push('/dashboard')} className="flex flex-col items-center gap-1 p-2 w-16">
-          <span className="text-2xl grayscale opacity-50">👤</span>
-          <span className="text-[10px] font-bold text-slate-400">Profil</span>
+        <button onClick={() => router.push('/dashboard')} className="flex flex-col items-center gap-1">
+          <span className="text-xl">👤</span>
+          <span className="text-[10px] font-bold text-white/60">Profil</span>
         </button>
       </div>
     </div>
