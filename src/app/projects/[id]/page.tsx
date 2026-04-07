@@ -35,6 +35,9 @@ interface SplitOrder {
   totalMin: number;
   ordersByMerchant: { merchant: any; items: any[]; subtotal: number }[];
   itemsWithoutPrice: number;
+  totalIfSingleMerchant: number | null;
+  referenceMerchantName: string | null;
+  savings: number | null;
 }
 
 export default function ProjectDetailPage() {
@@ -58,7 +61,6 @@ export default function ProjectDetailPage() {
       loadProject(t);
     });
   }, [params.id]);
-
   const loadProject = async (t: string) => {
     setLoading(true);
     try {
@@ -98,18 +100,19 @@ export default function ProjectDetailPage() {
   };
 
   const calcSplitOrder = async () => {
-    if (!token) return;
-    setCalculating(true);
-    try {
-      const res = await fetch(`${API_URL}/projects/${params.id}/bom/split-order`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
-      setSplitOrder(data);
-    } catch {}
-    finally { setCalculating(false); }
-  };
+  if (!token) return;
+  setCalculating(true);
+  try {
+    const res = await fetch(`${API_URL}/projects/${params.id}/bom/split-order`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const data = await res.json();
+    console.log('splitOrder response:', JSON.stringify(data));
+    setSplitOrder(data);
+  } catch (e) { console.error('splitOrder error:', e); }
+  finally { setCalculating(false); }
+};
 
   const findBestPrice = async (itemId: string) => {
     if (!token) return;
@@ -209,29 +212,103 @@ export default function ProjectDetailPage() {
           </div>
         </div>
 
-        {/* Split-Order résultats */}
-        {splitOrder && (
-          <div className="bg-white/5 border border-cyan-500/20 rounded-3xl p-6 mb-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="font-black text-lg text-cyan-400">⚡ Split-Order Optimal</h2>
-              <span className="text-2xl font-black text-white">{splitOrder.totalMin.toFixed(2)} $</span>
+{/* Split-Order résultats */}
+{splitOrder && (
+  <div className="bg-white/5 border border-violet-500/30 rounded-3xl p-6 mb-6">
+    <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center gap-3">
+        <span className="text-2xl">⚡</span>
+        <div>
+          <h2 className="font-black text-white text-lg">Split-Order Optimal</h2>
+          <p className="text-xs text-white/40">Meilleur prix pour chaque item, réparti par marchand</p>
+        </div>
+      </div>
+      <div className="text-right">
+        <p className="text-2xl font-black text-cyan-400">{Number(splitOrder.totalMin ?? 0).toFixed(2)} $</p>
+        <p className="text-xs text-white/30">Prix optimisé par marchand</p>
+      </div>
+    </div>
+
+    <div className="space-y-4">
+      {splitOrder.ordersByMerchant.map((order: any, i: number) => (
+        <div key={i} className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden">
+          {/* Header marchand */}
+          <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
+            <div className="flex items-center gap-2">
+              <span className="text-lg">🏪</span>
+              <span className="font-black text-white">{order.merchant?.name ?? 'Autre marchand'}</span>
+              <span className="text-xs text-white/30 bg-white/5 px-2 py-0.5 rounded-full">
+                {order.items.length} item{order.items.length > 1 ? 's' : ''}
+              </span>
             </div>
-            {splitOrder.itemsWithoutPrice > 0 && (
-              <p className="text-amber-400 text-sm mb-4">⚠️ {splitOrder.itemsWithoutPrice} item{splitOrder.itemsWithoutPrice > 1 ? 's' : ''} sans prix</p>
-            )}
-            <div className="flex flex-col gap-3">
-              {splitOrder.ordersByMerchant.map((o, i) => (
-                <div key={i} className="bg-white/5 rounded-2xl p-4 flex items-center justify-between">
-                  <div>
-                    <p className="font-black">{o.merchant?.name ?? 'Marchand'}</p>
-                    <p className="text-xs text-white/40">{o.items.length} item{o.items.length > 1 ? 's' : ''}</p>
-                  </div>
-                  <span className="text-cyan-400 font-black">{o.subtotal.toFixed(2)} $</span>
-                </div>
-              ))}
-            </div>
+            <span className="text-lg font-black text-cyan-400">{order.subtotal.toFixed(2)} $</span>
           </div>
-        )}
+
+          {/* Liste des items */}
+          <div className="px-4 py-2 space-y-2">
+            {order.items.map((item: any, j: number) => (
+              <div key={j} className="flex items-center justify-between py-1">
+                <div className="flex items-center gap-2">
+                  {item.imageUrl && (
+                    <img src={item.imageUrl} alt={item.name} className="w-8 h-8 rounded-lg object-contain bg-white p-0.5" />
+                  )}
+                  <div>
+                    <p className="text-sm text-white/80 font-medium">{item.name}</p>
+                    <p className="text-xs text-white/30">{item.quantity} × {Number(item.bestPrice).toFixed(2)} $</p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="text-sm font-bold text-white">{item.lineTotal.toFixed(2)} $</p>
+                  {item.productUrl && (
+                    <a
+                      href={item.productUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={() => {
+                        if (token) {
+                          fetch(`${API_URL}/search/affiliate-click`, {
+                            method: 'POST',
+                            headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ merchantId: item.bestMerchantId, productTitle: item.productTitle, productUrl: item.productUrl }),
+                          }).catch(() => {});
+                        }
+                      }}
+                      className="text-xs text-cyan-400 hover:text-cyan-300"
+                    >
+                      Voir →
+                    </a>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Bouton commander */}
+          <div className="px-4 pb-3">
+            {order.items[0]?.productUrl ? (
+              <a
+                href={order.items[0].productUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-center gap-2 w-full py-2 bg-gradient-to-r from-violet-600 to-cyan-600 rounded-xl text-sm font-bold text-white hover:opacity-90 transition"
+              >
+                🛒 Commander chez {order.merchant?.name ?? 'ce marchand'}
+              </a>
+            ) : (
+              <div className="text-center text-xs text-white/20 py-1">Lien non disponible</div>
+            )}
+          </div>
+        </div>
+      ))}
+
+      {splitOrder.itemsWithoutPrice > 0 && (
+        <p className="text-xs text-amber-400 text-center">
+          ⚠ {splitOrder.itemsWithoutPrice} item{splitOrder.itemsWithoutPrice > 1 ? 's' : ''} sans prix — cliquez sur "Chercher" pour les inclure
+        </p>
+      )}
+    </div>
+  </div>
+)}
 
         {/* Formulaire ajout item */}
         {showAddForm && (
