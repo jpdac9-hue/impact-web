@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '@/src/lib/supabase';
 import Link from 'next/link';
 import { useRouter, useParams } from 'next/navigation';
+import NavBar from '@/src/components/NavBar';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
 
@@ -166,13 +167,7 @@ export default function ProjectDetailPage() {
       <div className="fixed -top-40 -left-40 w-96 h-96 bg-violet-600/10 rounded-full blur-3xl pointer-events-none" />
 
       {/* NAVBAR */}
-      <nav className="sticky top-0 z-50 border-b border-white/10 bg-[#0a0a0f]/80 backdrop-blur-xl">
-        <div className="max-w-7xl mx-auto px-6 h-16 flex items-center gap-4">
-          <Link href="/projects" className="text-white/50 hover:text-white transition text-sm">← Projets</Link>
-          <span className="text-white/20">/</span>
-          <span className="font-black text-white truncate">{project.name}</span>
-        </div>
-      </nav>
+      <NavBar />
 
       <div className="max-w-4xl mx-auto px-6 py-8">
         {/* Header projet */}

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '@/src/lib/supabase';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import NavBar from '@/src/components/NavBar';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
 
@@ -99,18 +100,7 @@ useEffect(() => {
       <div className="fixed top-20 right-0 w-80 h-80 bg-cyan-600/10 rounded-full blur-3xl pointer-events-none" />
 
       {/* NAVBAR */}
-      <nav className="sticky top-0 z-50 border-b border-white/10 bg-[#0a0a0f]/80 backdrop-blur-xl">
-        <div className="max-w-7xl mx-auto px-6 h-16 flex justify-between items-center">
-          <Link href="/" className="flex items-center gap-3">
-            <img src="/logo.svg" alt="Suric" className="h-15 w-15 rounded-full" />
-            <div className="flex flex-col">
-              <span className="font-black tracking-tight text-lg bg-gradient-to-r from-violet-400 to-cyan-400 bg-clip-text text-transparent leading-none">SURIC</span>
-              <span className="text-[10px] text-white/30 font-medium leading-none">Scan. Compare. Save.</span>
-            </div>
-          </Link>
-          <Link href="/signin" className="text-sm font-medium text-white/50 hover:text-white transition">Mon Espace →</Link>
-        </div>
-      </nav>
+      <NavBar />
 
       <div className="max-w-4xl mx-auto px-6 py-10">
         {/* Header */}
