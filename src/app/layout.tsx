@@ -1,8 +1,8 @@
 import "./globals.css";
 
 export const metadata = {
-  title: "Remora — Shop. Earn. Give.",
-  description: "Chaque achat génère un cashback partagé entre vous et votre organisme de charité favori.",
+  title: "Suric — Scan. Compare. Save.",
+  description: "Assistant intelligent de magasinage et de planification de projets pour le marché canadien.",
 };
 
 export default function RootLayout({
@@ -13,7 +13,7 @@ export default function RootLayout({
   return (
     <html lang="fr">
       <head>
-        <link rel="icon" href="/logo.svg" />
+        <link rel="icon" href="/logo.png" />
       </head>
       <body>{children}</body>
     </html>

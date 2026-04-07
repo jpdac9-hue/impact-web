@@ -1,23 +1,32 @@
 @import "tailwindcss";
 
 @theme {
-  --color-violet-400: #a78bfa;
-  --color-violet-500: #8b5cf6;
-  --color-violet-600: #7c3aed;
-  --color-fuchsia-400: #e879f9;
-  --color-fuchsia-500: #d946ef;
-  --color-fuchsia-600: #c026d3;
-  --color-pink-400: #f472b6;
+  /* Violet — couleur primaire Suric */
+  --color-violet-400: #a855f7;
+  --color-violet-500: #7C3AED;
+  --color-violet-600: #6B21A8;
+  --color-violet-700: #581C87;
+
+  /* Teal/Cyan — accent Suric (jumelles) */
+  --color-cyan-400: #22d3ee;
+  --color-cyan-500: #06B6D4;
+  --color-cyan-600: #0891B2;
+  --color-cyan-700: #0e7490;
+
+  /* Autres utilitaires */
   --color-rose-400: #fb7185;
   --color-rose-500: #f43f5e;
   --color-emerald-400: #34d399;
   --color-emerald-500: #10b981;
+  --color-amber-400: #fbbf24;
   --color-green-400: #4ade80;
 }
 
 :root {
   --background: #0a0a0f;
   --foreground: #ffffff;
+  --primary: #7C3AED;
+  --accent: #06B6D4;
 }
 
 body {
@@ -26,7 +35,6 @@ body {
   font-family: 'Inter', system-ui, sans-serif;
 }
 
-/* Masquer la scrollbar horizontale */
 .scrollbar-hide {
   -ms-overflow-style: none;
   scrollbar-width: none;
